@@ -1,19 +1,154 @@
 package udp
 
+import (
+	"fmt"
+	"log"
+	"net"
+	"time"
+
+	"github.com/fanmanpro/coordinator-server/gamedata"
+	"github.com/fanmanpro/game-server/gs"
+	"github.com/golang/protobuf/proto"
+)
+
+var packetQueue []gamedata.Packet
+
 // UserDatagramProtocolServer to open web socket ports
 type UserDatagramProtocolServer struct {
-	ip   string
-	port string
+	ip         string
+	port       string
+	gameServer *gs.GameServer
+	conn       *net.UDPConn
+	address    *net.UDPAddr
 }
 
 // New initializes a new web socket server without starting it
-func New(ip string, port string) *UserDatagramProtocolServer {
-	return &UserDatagramProtocolServer{ip, port}
+func New(gameServer *gs.GameServer, ip string, port string) *UserDatagramProtocolServer {
+	return &UserDatagramProtocolServer{gameServer: gameServer, ip: ip, port: port}
 }
 
 // Start starts the already intialized UDPServer
-func (u *UserDatagramProtocolServer) Start() bool {
-	return true
+func (u *UserDatagramProtocolServer) Start() {
+	var err error
+	u.address, err = net.ResolveUDPAddr("udp4", u.ip+":"+u.port)
+
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+
+	// setup listener for incoming UDP connection
+	conn, err := net.ListenUDP("udp", u.address)
+
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+
+	u.conn = conn
+
+	go u.awaitClients()
+	fmt.Println("UDP server started")
+}
+
+// Stop closes the UDP connection
+func (u *UserDatagramProtocolServer) Stop() {
+	u.conn.Close()
+}
+
+func (u *UserDatagramProtocolServer) awaitClients() {
+	for {
+		time.Sleep(time.Millisecond * 100)
+		buffer := make([]byte, 1024)
+
+		n, addr, err := u.conn.ReadFromUDP(buffer)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		var packet gamedata.Packet
+		if err := proto.Unmarshal(buffer[:n], &packet); err != nil { // don't take the full size of the buffer, just the header size
+			fmt.Println("Failed to parse address book:", err)
+			continue
+		}
+
+		if !u.gameServer.Validate(packet.Header.Cid) {
+			fmt.Println("invalid client id: ", packet.Header.Cid)
+			continue
+		}
+		if packet.Header.OpCode == gamedata.Header_ClientJoin {
+			fmt.Println("client joined")
+			u.gameServer.ClientJoined(packet.Header.Cid, addr)
+		}
+		if u.gameServer.ClientsConnected() {
+			fmt.Println("all client joined")
+			go u.receiving()
+			go u.sending()
+			break
+		}
+	}
+}
+func (u *UserDatagramProtocolServer) receiving() {
+	defer u.Stop()
+	for {
+		time.Sleep(time.Millisecond)
+		buffer := make([]byte, 1024)
+
+		n, _, err := u.conn.ReadFromUDP(buffer)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		var packet gamedata.Packet
+		if err := proto.Unmarshal(buffer[:n], &packet); err != nil { // don't take the full size of the buffer, just the header size
+			log.Fatalln("Failed to parse address book:", err)
+			return
+		}
+
+		if !u.gameServer.Validate(packet.Header.Cid) {
+			return
+		}
+		u.handlePacket(&packet)
+	}
+}
+
+func (u *UserDatagramProtocolServer) sending() {
+	for {
+		time.Sleep(time.Millisecond)
+		for _, p := range packetQueue {
+			_, err := proto.Marshal(&p)
+			if err != nil {
+				log.Printf("err: failed to marshal packet. %v", err)
+				break
+			}
+
+			out, err := proto.Marshal(&p)
+			if err != nil {
+				log.Fatalln("Failed to encode address book:", err)
+			}
+
+			for _, a := range u.gameServer.Addresses() {
+				if a == nil {
+					continue
+				}
+
+				_, err = u.conn.WriteToUDP(out, a)
+				if err != nil {
+					log.Println(err)
+				}
+			}
+		}
+		packetQueue = nil
+	}
+}
+func (u *UserDatagramProtocolServer) handlePacket(packet *gamedata.Packet) {
+	switch packet.Header.OpCode {
+	case gamedata.Header_Rigidbody:
+		{
+			packetQueue = append(packetQueue, *packet)
+		}
+		break
+	}
 }
 
 //service := hostName + ":" + portNum

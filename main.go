@@ -1,18 +1,20 @@
 package main
 
 import (
+	"github.com/fanmanpro/game-server/gs"
+	"github.com/fanmanpro/game-server/udp"
 	"github.com/fanmanpro/game-server/ws"
 )
 
-//var (
-//	clients      map[int32]*Client
-//	packetQueue  []Packet
-//	clientsMutex sync.RWMutex
-//)
-
 func main() {
-	ip := "127.0.0.1"
-	port := "6000"
-	wsClient := ws.NewClient(ip, port)
+	gameServer := &gs.GameServer{}
+
+	localIP := "127.0.0.1"
+	localPort := "1541"
+	udpServer := udp.New(gameServer, localIP, localPort)
+
+	coordinatorIP := "127.0.0.1"
+	coordinatorPort := "1540"
+	wsClient := ws.NewClient(gameServer, coordinatorIP, coordinatorPort, udpServer)
 	wsClient.Connect()
 }

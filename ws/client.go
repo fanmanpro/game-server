@@ -9,6 +9,9 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/fanmanpro/game-server/gs"
+	"github.com/fanmanpro/game-server/udp"
+
 	"github.com/fanmanpro/coordinator-server/gamedata"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
@@ -23,13 +26,21 @@ var connectionID string
 
 // WebSocketClient to open web socket ports
 type WebSocketClient struct {
-	ip   string
-	port string
+	ip         string
+	port       string
+	conn       *websocket.Conn
+	gameServer *gs.GameServer
+	udpServer  *udp.UserDatagramProtocolServer
 }
 
 // NewClient initializes a new web socket server without starting it
-func NewClient(ip string, port string) *WebSocketClient {
-	return &WebSocketClient{ip, port}
+func NewClient(gameServer *gs.GameServer, ip string, port string, udpServer *udp.UserDatagramProtocolServer) *WebSocketClient {
+	return &WebSocketClient{gameServer: gameServer, ip: ip, port: port, udpServer: udpServer}
+}
+
+// Disconnect closes connection to web socket server
+func (w *WebSocketClient) Disconnect() {
+	w.conn.Close()
 }
 
 // Connect establishes connection with websocket server as client
@@ -47,25 +58,12 @@ func (w *WebSocketClient) Connect() {
 	if err != nil {
 		log.Fatal("dial:", err)
 	}
-	defer c.Close()
+	w.conn = c
+	defer w.Disconnect()
 
 	done = make(chan struct{})
-	go receiving(c)
+	go w.receiving()
 
-	//go func() {
-	//	defer close(done)
-	//	for {
-	//		_, message, err := c.ReadMessage()
-	//		if err != nil {
-	//			log.Println("read:", err)
-	//			return
-	//		}
-	//		log.Printf("recv: %s", message)
-	//	}
-	//}()
-
-	//ticker := time.NewTicker(time.Second)
-	//defer ticker.Stop()
 	gameServerJoined := &gamedata.GameServerOnline{
 		Secret:   "fanmanpro",
 		Region:   "Canada",
@@ -85,43 +83,14 @@ func (w *WebSocketClient) Connect() {
 
 	packetQueue = append(packetQueue, packet)
 
-	sending(c)
-
-	//for {
-	//	select {
-	//	case <-done:
-	//		return
-	//	case t := <-ticker.C:
-	//		fmt.Println("here")
-	//		err := c.WriteMessage(websocket.BinaryMessage, []byte(t.String()))
-	//		if err != nil {
-	//			log.Println("write:", err)
-	//			return
-	//		}
-	//	case <-interrupt:
-	//		log.Println("interrupt")
-
-	//		// Cleanly close the connection by sending a close message and then
-	//		// waiting (with timeout) for the server to close the connection.
-	//		err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-	//		if err != nil {
-	//			log.Println("write close:", err)
-	//			return
-	//		}
-	//		select {
-	//		case <-done:
-	//		case <-time.After(time.Second):
-	//		}
-	//		return
-	//	}
-	//}
+	w.sending()
 }
 
-func receiving(c *websocket.Conn) {
+func (w *WebSocketClient) receiving() {
 	defer close(done)
 	for {
 		time.Sleep(time.Millisecond)
-		mt, message, err := c.ReadMessage()
+		mt, message, err := w.conn.ReadMessage()
 		if err != nil {
 			log.Printf("err: %v", err)
 			break
@@ -133,12 +102,12 @@ func receiving(c *websocket.Conn) {
 				panic(err)
 			}
 			log.Printf("recv: %s", packet.Header.OpCode)
-			handlePacket(c, packet)
+			w.handlePacket(w.conn, packet)
 		}
 	}
 }
 
-func sending(c *websocket.Conn) {
+func (w *WebSocketClient) sending() {
 	for {
 		time.Sleep(time.Millisecond)
 		select {
@@ -149,7 +118,7 @@ func sending(c *websocket.Conn) {
 
 			// Cleanly close the connection by sending a close message and then
 			// waiting (with timeout) for the server to close the connection.
-			err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+			err := w.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 			if err != nil {
 				log.Println("write close:", err)
 				return
@@ -167,7 +136,7 @@ func sending(c *websocket.Conn) {
 						break
 					}
 
-					err = c.WriteMessage(websocket.BinaryMessage, data)
+					err = w.conn.WriteMessage(websocket.BinaryMessage, data)
 					if err != nil {
 						log.Println("err:", err)
 						break
@@ -181,51 +150,29 @@ func sending(c *websocket.Conn) {
 	}
 }
 
-func handlePacket(c *websocket.Conn, packet *gamedata.Packet) {
+func (w *WebSocketClient) handlePacket(c *websocket.Conn, packet *gamedata.Packet) {
 	switch packet.Header.OpCode {
 	case gamedata.Header_GameServerOnline:
 		{
 			connectionID = packet.Header.Cid
-
-			fmt.Println(connectionID)
-			//gameServerJoined := &gamedata.GameServerJoined{
-			//	Id:     "fanmanpro",
-			//	Region: "Canada",
-			//}
-			//err := ptypes.UnmarshalAny(data, gameServerJoined)
-			//if err != nil {
-			//	log.Printf("err: invalid %v data. err: %v", gamedata.Header_ClientJoined, err)
-			//	return
-			//}
-
-			// get the player info from the database
-			//clientJoined.Name = "FanManPro"
-
-			//data, err = ptypes.MarshalAny(clientJoined)
-			//if err != nil {
-			//	log.Printf("err: could not generate uuid. %v", err)
-			//	return
-			//}
-			//packet := gamedata.Packet{
-			//	Header: &gamedata.Header{
-			//		OpCode: opCode,
-			//		Cid:    id.String(),
-			//	},
-			//	Data: data,
-			//}
-
-			//packetQueue = append(packetQueue, packet)
 		}
 		break
 	case gamedata.Header_GameServerStart:
 		{
-			fmt.Println(connectionID)
+			if w.udpServer == nil {
+				log.Printf("err: udp server doesn't exist")
+				return
+			}
+
 			gameServerStart := &gamedata.GameServerStart{}
 			err := ptypes.UnmarshalAny(packet.Data, gameServerStart)
 			if err != nil {
 				log.Printf("err: invalid %v data. err: %v", gamedata.Header_GameServerStart, err)
 				return
 			}
+			w.gameServer.NewClients(gameServerStart.Clients)
+			go w.udpServer.Start()
+			//w.gameServer.clients =
 
 			id, err := uuid.NewUUID()
 			if err != nil {
