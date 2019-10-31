@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	gameServer := &gs.GameServer{}
+	gameServer := gs.NewGameServer(1)
 
 	localIP := "127.0.0.1"
 	localPort := "1541"

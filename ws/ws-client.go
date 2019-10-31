@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/fanmanpro/game-server/client"
 	"github.com/fanmanpro/game-server/gs"
 	"github.com/fanmanpro/game-server/udp"
 
@@ -170,7 +171,12 @@ func (w *WebSocketClient) handlePacket(c *websocket.Conn, packet *gamedata.Packe
 				log.Printf("err: invalid %v data. err: %v", gamedata.Header_GameServerStart, err)
 				return
 			}
-			w.gameServer.NewClients(gameServerStart.Clients)
+			for i, cl := range gameServerStart.Clients {
+				w.gameServer.NewClient(i, &client.Client{
+					CID:   cl.ID,
+					IPddr: cl.Address,
+				})
+			}
 			go w.udpServer.Start()
 			//w.gameServer.clients =
 
