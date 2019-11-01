@@ -3,18 +3,18 @@ package gs
 import (
 	"net"
 
-	"github.com/fanmanpro/game-server/client"
+	"github.com/fanmanpro/coordinator-server/client"
 )
 
 type GameServer struct {
-	clients []*client.Client
+	clients []*client.UDPClient
 }
 
 func NewGameServer(capacity int) *GameServer {
-	return &GameServer{make([]*client.Client, capacity)}
+	return &GameServer{make([]*client.UDPClient, capacity)}
 }
 
-func (g *GameServer) NewClient(i int, client *client.Client) {
+func (g *GameServer) NewClient(i int, client *client.UDPClient) {
 	g.clients[i] = client
 }
 

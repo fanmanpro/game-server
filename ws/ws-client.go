@@ -9,10 +9,10 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/fanmanpro/game-server/client"
 	"github.com/fanmanpro/game-server/gs"
 	"github.com/fanmanpro/game-server/udp"
 
+	"github.com/fanmanpro/coordinator-server/client"
 	"github.com/fanmanpro/coordinator-server/gamedata"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
@@ -172,11 +172,15 @@ func (w *WebSocketClient) handlePacket(c *websocket.Conn, packet *gamedata.Packe
 				return
 			}
 			for i, cl := range gameServerStart.Clients {
-				w.gameServer.NewClient(i, &client.Client{
-					CID:   cl.ID,
-					IPddr: cl.Address,
-				})
+				w.gameServer.NewClient(i, &client.UDPClient{
+					Client: &client.Client{
+						CID:    cl.ID,
+						IPAddr: cl.Address,
+					},
+				},
+				)
 			}
+
 			go w.udpServer.Start()
 			//w.gameServer.clients =
 
