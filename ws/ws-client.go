@@ -1,19 +1,20 @@
 package ws
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net/url"
 	"os"
 	"os/signal"
-	"time"
 
 	"github.com/fanmanpro/game-server/gs"
 	"github.com/fanmanpro/game-server/udp"
 
 	"github.com/fanmanpro/coordinator-server/client"
 	"github.com/fanmanpro/coordinator-server/gamedata"
+	"github.com/fanmanpro/coordinator-server/worker"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/google/uuid"
@@ -29,19 +30,14 @@ var connectionID string
 type WebSocketClient struct {
 	ip         string
 	port       string
-	conn       *websocket.Conn
 	gameServer *gs.GameServer
 	udpServer  *udp.UserDatagramProtocolServer
+	workerPool *worker.Pool
 }
 
 // NewClient initializes a new web socket server without starting it
 func NewClient(gameServer *gs.GameServer, ip string, port string, udpServer *udp.UserDatagramProtocolServer) *WebSocketClient {
-	return &WebSocketClient{gameServer: gameServer, ip: ip, port: port, udpServer: udpServer}
-}
-
-// Disconnect closes connection to web socket server
-func (w *WebSocketClient) Disconnect() {
-	w.conn.Close()
+	return &WebSocketClient{gameServer: gameServer, ip: ip, port: port, udpServer: udpServer, workerPool: worker.NewPool(1, 10)}
 }
 
 // Connect establishes connection with websocket server as client
@@ -59,11 +55,10 @@ func (w *WebSocketClient) Connect() {
 	if err != nil {
 		log.Fatal("dial:", err)
 	}
-	w.conn = c
-	defer w.Disconnect()
 
-	done = make(chan struct{})
-	go w.receiving()
+	defer c.Close()
+
+	w.workerPool.Start()
 
 	gameServerJoined := &gamedata.GameServerOnline{
 		Secret:   "fanmanpro",
@@ -82,94 +77,89 @@ func (w *WebSocketClient) Connect() {
 		Data: data,
 	}
 
-	packetQueue = append(packetQueue, packet)
+	w.workerPool.ScheduleJob(func() error { return w.send(packet, c) })
 
-	w.sending()
-}
-
-func (w *WebSocketClient) receiving() {
-	defer close(done)
-	for {
-		time.Sleep(time.Millisecond)
-		mt, message, err := w.conn.ReadMessage()
-		if err != nil {
-			log.Printf("err: %v", err)
-			break
-		}
-		if mt == websocket.BinaryMessage {
-			packet := &gamedata.Packet{}
-			err = proto.Unmarshal(message, packet)
+	disconnected := make(chan bool, 1)
+	go func() {
+		for {
+			log.Printf("waiting for packet")
+			mt, data, err := c.ReadMessage()
 			if err != nil {
-				panic(err)
+				log.Printf("err: %v", err)
+				disconnected <- true
 			}
-			log.Printf("recv: %s", packet.Header.OpCode)
-			w.handlePacket(w.conn, packet)
+			if mt == websocket.BinaryMessage {
+				err := w.workerPool.ScheduleJob(
+					func() error {
+						packet := &gamedata.Packet{}
+						err = proto.Unmarshal(data, packet)
+						if err != nil {
+							panic(err)
+						}
+						log.Printf("receiving packet %v over connection %v from %v to %v", packet.Header.OpCode, packet.Header.Cid, c.RemoteAddr().String(), c.LocalAddr().String())
+						log.Printf("recv: %s", packet.Header.OpCode)
+						return w.handlePacket(c, packet)
+					},
+				)
+				if err != nil {
+					log.Printf("err: %s", err)
+				}
+			}
 		}
-	}
-}
-
-func (w *WebSocketClient) sending() {
-	for {
-		time.Sleep(time.Millisecond)
-		select {
-		case <-done:
-			return
-		case <-interrupt:
-			log.Println("interrupt")
-
+	}()
+	select {
+	case <-disconnected:
+		{
+			fmt.Println("Client disconnected")
+		}
+		break
+	case <-interrupt:
+		{
 			// Cleanly close the connection by sending a close message and then
 			// waiting (with timeout) for the server to close the connection.
-			err := w.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+			err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 			if err != nil {
 				log.Println("write close:", err)
 				return
 			}
-			select {
-			case <-done:
-				return
-			}
-		default:
-			{
-				for _, p := range packetQueue {
-					data, err := proto.Marshal(&p)
-					if err != nil {
-						log.Printf("err: failed to marshal packet. %v", err)
-						break
-					}
-
-					err = w.conn.WriteMessage(websocket.BinaryMessage, data)
-					if err != nil {
-						log.Println("err:", err)
-						break
-					} else {
-						log.Printf("sent: %v", p.Header.OpCode)
-					}
-				}
-				packetQueue = nil
-			}
 		}
+		break
 	}
 }
 
-func (w *WebSocketClient) handlePacket(c *websocket.Conn, packet *gamedata.Packet) {
+func (w *WebSocketClient) send(p gamedata.Packet, c *websocket.Conn) error {
+	log.Printf("sending packet %v over connection %v to %v from %v", p.Header.OpCode, p.Header.Cid, c.RemoteAddr().String(), c.LocalAddr().String())
+	data, err := proto.Marshal(&p)
+	if err != nil {
+		return err
+	}
+
+	err = c.WriteMessage(websocket.BinaryMessage, data)
+	if err != nil {
+		return err
+	}
+	log.Printf("sent: %v", p.Header.OpCode)
+	return nil
+}
+
+func (w *WebSocketClient) handlePacket(c *websocket.Conn, packet *gamedata.Packet) error {
 	switch packet.Header.OpCode {
 	case gamedata.Header_GameServerOnline:
 		{
 			connectionID = packet.Header.Cid
+			return nil
 		}
-		break
 	case gamedata.Header_GameServerStart:
 		{
+			log.Printf("HELLO?!")
 			if w.udpServer == nil {
-				log.Printf("err: udp server doesn't exist")
-				return
+				return errors.New("UDP server doesn't exist")
 			}
 
 			gameServerStart := &gamedata.GameServerStart{}
 			err := ptypes.UnmarshalAny(packet.Data, gameServerStart)
 			if err != nil {
-				log.Printf("err: invalid %v data. err: %v", gamedata.Header_GameServerStart, err)
-				return
+				return errors.New(fmt.Sprintf("err: invalid %v data. err: %v", gamedata.Header_GameServerStart, err))
 			}
 			for i, cl := range gameServerStart.Clients {
 				w.gameServer.NewClient(i, &client.UDPClient{
@@ -186,16 +176,14 @@ func (w *WebSocketClient) handlePacket(c *websocket.Conn, packet *gamedata.Packe
 
 			id, err := uuid.NewUUID()
 			if err != nil {
-				log.Printf("err: could not generate uuid. %v", err)
-				break
+				return errors.New(fmt.Sprintf("err: could not generate uuid. %v", err))
 			}
 
 			gameServerStart.ID = id.String()
 
 			data, err := ptypes.MarshalAny(gameServerStart)
 			if err != nil {
-				log.Printf("err: could not generate uuid. %v", err)
-				return
+				return errors.New(fmt.Sprintf("err: could not unmarshal packet. %v", err))
 			}
 			packet := gamedata.Packet{
 				Header: &gamedata.Header{
@@ -205,8 +193,12 @@ func (w *WebSocketClient) handlePacket(c *websocket.Conn, packet *gamedata.Packe
 				Data: data,
 			}
 
-			packetQueue = append(packetQueue, packet)
+			//packetQueue = append(packetQueue, packet)
+			return w.workerPool.ScheduleJob(func() error { return w.send(packet, c) })
 		}
-		break
+	default:
+		{
+			return errors.New(fmt.Sprintf("Packet received but unknown handler for %v", packet.Header.OpCode))
+		}
 	}
 }
