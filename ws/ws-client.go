@@ -167,6 +167,7 @@ func (w *WebSocketClient) handlePacket(c *websocket.Conn, packet *gamedata.Packe
 						CID:    cl.ID,
 						IPAddr: cl.Address,
 					},
+					Send: make(chan *[]byte, 1),
 				},
 				)
 			}

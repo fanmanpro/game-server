@@ -26,6 +26,16 @@ func (g *GameServer) Capacity() int {
 	return len(g.clients)
 }
 
+func (g *GameServer) ClientAt(i int) *client.UDPClient {
+	return g.clients[i]
+}
+
+func (g *GameServer) Broadcast(data *[]byte) {
+	for i := 0; i < len(g.clients); i++ {
+		g.clients[i].Send <- data
+	}
+}
+
 //func (g *GameServer) Clients() []*gamedata.ClientConnection {
 //	return g.clients
 //}

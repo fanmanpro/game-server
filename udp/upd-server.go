@@ -1,12 +1,13 @@
 package udp
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net"
-	"time"
 
 	"github.com/fanmanpro/coordinator-server/gamedata"
+	"github.com/fanmanpro/coordinator-server/worker"
 	"github.com/fanmanpro/game-server/gs"
 	"github.com/golang/protobuf/proto"
 )
@@ -18,14 +19,14 @@ type UserDatagramProtocolServer struct {
 	ip         string
 	port       string
 	gameServer *gs.GameServer
-	conn       *net.UDPConn
 	address    *net.UDPAddr
 	packets    chan gamedata.Packet
+	workerPool *worker.Pool
 }
 
 // New initializes a new web socket server without starting it
 func New(gameServer *gs.GameServer, ip string, port string) *UserDatagramProtocolServer {
-	return &UserDatagramProtocolServer{gameServer: gameServer, ip: ip, port: port, packets: make(chan gamedata.Packet, 10)}
+	return &UserDatagramProtocolServer{gameServer: gameServer, ip: ip, port: port, packets: make(chan gamedata.Packet, 100), workerPool: worker.NewPool(10, 100)}
 }
 
 // Start starts the already intialized UDPServer
@@ -46,9 +47,7 @@ func (u *UserDatagramProtocolServer) Start() {
 	}
 	defer conn.Close()
 
-	u.conn = conn
-
-	fmt.Println("UDP server started.")
+	fmt.Println("UDP server started.", u.ip+":"+u.port)
 	connected := make(chan *net.UDPAddr, u.gameServer.Capacity())
 	disconnected := make(chan bool, u.gameServer.Capacity())
 	simulation := make(chan *net.UDPAddr, 1)
@@ -77,6 +76,9 @@ func (u *UserDatagramProtocolServer) Start() {
 	simAddress := <-simulation
 	fmt.Println("Simulation server connected.")
 
+	// once everything is ready and kicks off, start the workers!
+	u.workerPool.Start()
+
 	go func() {
 		u.processSimulation(conn, simAddress)
 	}()
@@ -99,32 +101,57 @@ func (u *UserDatagramProtocolServer) Start() {
 	fmt.Println("All clients left. Resetting server.")
 	//simulating <- false
 }
+func (u *UserDatagramProtocolServer) handlePacket(packet *gamedata.Packet) error {
+	switch packet.Header.OpCode {
+	case gamedata.Header_SimulationState:
+	case gamedata.Header_Rigidbody:
+	case gamedata.Header_Force:
+		{
+			out, err := proto.Marshal(packet)
+			if err != nil {
+				return err
+			}
+			//get it out to all clients
+			u.gameServer.Broadcast(&out)
+		}
+	}
+	return errors.New("Invalid packet received from UDP server")
+}
 func (u *UserDatagramProtocolServer) processSimulation(conn *net.UDPConn, addr *net.UDPAddr) bool {
 	// issues here.
 	// - this should be a channel like the rest
 	// - cannot send packets to sim server yet
 	go func() {
 		for {
-			buffer := make([]byte, 1024)
-			n, _, err := u.conn.ReadFromUDP(buffer)
+			buffer := make([]byte, 32768) // also 32KiB
+			n, addr, err := conn.ReadFromUDP(buffer)
+			log.Printf("ASDHJASDJHASDJASDHJASJHASD?")
 			if err != nil {
 				log.Fatal(err)
 			}
 
-			var packet gamedata.Packet
-			if err := proto.Unmarshal(buffer[:n], &packet); err != nil { // don't take the full size of the buffer, just the header size
-				fmt.Println("Failed to parse address book:", err)
-				continue
+			err = u.workerPool.ScheduleJob(
+				func() error {
+					packet := &gamedata.Packet{}
+					err = proto.Unmarshal(buffer[:n], packet)
+					if err != nil {
+						panic(err)
+					}
+					log.Printf("receiving packet %v over UDP connection %v from %v", packet.Header.OpCode, packet.Header.Cid, addr.String())
+					log.Printf("recv: %s", packet.Header.OpCode)
+					return u.handlePacket(packet)
+				},
+			)
+			if err != nil {
+				log.Printf("err: %s", err)
 			}
+			//var packet gamedata.Packet
+			//if err := proto.Unmarshal(buffer[:n], &packet); err != nil { // don't take the full size of the buffer, just the header size
+			//	fmt.Println("Failed to parse address book:", err)
+			//	continue
+			//}
 
 			//fmt.Println(packet.Header.OpCode)
-			switch packet.Header.OpCode {
-			case gamedata.Header_SimulationState:
-				{
-					u.packets <- packet
-				}
-				break
-			}
 			//leave <- true
 			//break
 		}
@@ -135,38 +162,34 @@ func (u *UserDatagramProtocolServer) processSimulation(conn *net.UDPConn, addr *
 func (u *UserDatagramProtocolServer) processClient(i int, conn *net.UDPConn, addr *net.UDPAddr) bool {
 	leave := make(chan bool, 1)
 	sending := make(chan bool, 1)
-	sending <- true
+	//sending <- true
 	// reading
-	go func() {
-		for {
-			buffer := make([]byte, 1024)
-			n, _, err := u.conn.ReadFromUDP(buffer)
-			if err != nil {
-				log.Fatal(err)
-			}
+	//go func() {
+	//	for {
+	//		buffer := make([]byte, 1024)
+	//		n, _, err := conn.ReadFromUDP(buffer)
+	//		if err != nil {
+	//			log.Fatal(err)
+	//		}
 
-			var packet gamedata.Packet
-			if err := proto.Unmarshal(buffer[:n], &packet); err != nil { // don't take the full size of the buffer, just the header size
-				fmt.Println("Failed to parse address book:", err)
-				continue
-			}
-		}
-	}()
+	//		var packet gamedata.Packet
+	//		if err := proto.Unmarshal(buffer[:n], &packet); err != nil { // don't take the full size of the buffer, just the header size
+	//			fmt.Println("Failed to parse address book:", err)
+	//			continue
+	//		}
+	//	}
+	//}()
 	go func() {
 		for {
 			select {
-			case packet := <-u.packets:
+			case data := <-u.gameServer.ClientAt(i).Send:
 				{
-					out, err := proto.Marshal(&packet)
-					if err != nil {
-						log.Printf("err: failed to marshal packet. %v", err)
-						break
-					}
-					fmt.Println("Sent packet to", i)
-					_, err = u.conn.WriteToUDP(out, addr)
+					_, err := conn.WriteToUDP(*data, addr)
 					if err != nil {
 						log.Println(err)
+						continue
 					}
+					fmt.Println("Sent packet to", addr.String())
 				}
 				break
 			case s := <-sending:
@@ -185,7 +208,7 @@ func (u *UserDatagramProtocolServer) processClient(i int, conn *net.UDPConn, add
 func (u *UserDatagramProtocolServer) awaitClient(conn *net.UDPConn) *net.UDPAddr {
 	for {
 		buffer := make([]byte, 1024)
-		n, addr, err := u.conn.ReadFromUDP(buffer)
+		n, addr, err := conn.ReadFromUDP(buffer)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -205,90 +228,91 @@ func (u *UserDatagramProtocolServer) awaitClient(conn *net.UDPConn) *net.UDPAddr
 func (u *UserDatagramProtocolServer) awaitSimulation(conn *net.UDPConn) *net.UDPAddr {
 	for {
 		buffer := make([]byte, 1024)
-		n, addr, err := u.conn.ReadFromUDP(buffer)
+		n, addr, err := conn.ReadFromUDP(buffer)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		var packet gamedata.Packet
-		if err := proto.Unmarshal(buffer[:n], &packet); err != nil { // don't take the full size of the buffer, just the header size
-			fmt.Println("Failed to parse address book:", err)
-			continue
+		packet := &gamedata.Packet{}
+		err = proto.Unmarshal(buffer[:n], packet)
+		if err != nil {
+			panic(err)
 		}
 
-		if packet.Header.OpCode == gamedata.Header_SimulationState {
+		u.handlePacket(packet)
+		if packet.Header.OpCode == gamedata.Header_Force {
 			return addr
 		}
 	}
 }
 
 // Stop closes the UDP connection
-func (u *UserDatagramProtocolServer) Stop() {
-	u.conn.Close()
-}
-
-func (u *UserDatagramProtocolServer) receiving() {
-	defer u.Stop()
-	for {
-		time.Sleep(time.Millisecond)
-		buffer := make([]byte, 1024)
-
-		n, _, err := u.conn.ReadFromUDP(buffer)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		var packet gamedata.Packet
-		if err := proto.Unmarshal(buffer[:n], &packet); err != nil { // don't take the full size of the buffer, just the header size
-			log.Fatalln("Failed to parse address book:", err)
-			return
-		}
-
-		//if !u.gameServer.Validate(packet.Header.Cid) {
-		//	return
-		//}
-		u.handlePacket(&packet)
-	}
-}
-
-func (u *UserDatagramProtocolServer) sending() {
-	for {
-		time.Sleep(time.Millisecond)
-		for _, p := range packetQueue {
-			_, err := proto.Marshal(&p)
-			if err != nil {
-				log.Printf("err: failed to marshal packet. %v", err)
-				break
-			}
-
-			//out, err := proto.Marshal(&p)
-			//if err != nil {
-			//	log.Fatalln("Failed to encode address book:", err)
-			//}
-
-			//for _, a := range u.gameServer.Addresses() {
-			//	if a == nil {
-			//		continue
-			//	}
-
-			//	_, err = u.conn.WriteToUDP(out, a)
-			//	if err != nil {
-			//		log.Println(err)
-			//	}
-			//}
-		}
-		packetQueue = nil
-	}
-}
-func (u *UserDatagramProtocolServer) handlePacket(packet *gamedata.Packet) {
-	switch packet.Header.OpCode {
-	case gamedata.Header_SimulationState:
-		{
-			packetQueue = append(packetQueue, *packet)
-		}
-		break
-	}
-}
+//func (u *UserDatagramProtocolServer) Stop() {
+//	u.conn.Close()
+//}
+//
+//func (u *UserDatagramProtocolServer) receiving() {
+//	defer u.Stop()
+//	for {
+//		time.Sleep(time.Millisecond)
+//		buffer := make([]byte, 1024)
+//
+//		n, _, err := u.conn.ReadFromUDP(buffer)
+//		if err != nil {
+//			log.Fatal(err)
+//		}
+//
+//		var packet gamedata.Packet
+//		if err := proto.Unmarshal(buffer[:n], &packet); err != nil { // don't take the full size of the buffer, just the header size
+//			log.Fatalln("Failed to parse address book:", err)
+//			return
+//		}
+//
+//		//if !u.gameServer.Validate(packet.Header.Cid) {
+//		//	return
+//		//}
+//		u.handlePacket(&packet)
+//	}
+//}
+//
+//func (u *UserDatagramProtocolServer) sending() {
+//	for {
+//		time.Sleep(time.Millisecond)
+//		for _, p := range packetQueue {
+//			_, err := proto.Marshal(&p)
+//			if err != nil {
+//				log.Printf("err: failed to marshal packet. %v", err)
+//				break
+//			}
+//
+//			//out, err := proto.Marshal(&p)
+//			//if err != nil {
+//			//	log.Fatalln("Failed to encode address book:", err)
+//			//}
+//
+//			//for _, a := range u.gameServer.Addresses() {
+//			//	if a == nil {
+//			//		continue
+//			//	}
+//
+//			//	_, err = u.conn.WriteToUDP(out, a)
+//			//	if err != nil {
+//			//		log.Println(err)
+//			//	}
+//			//}
+//		}
+//		packetQueue = nil
+//	}
+//}
+//func (u *UserDatagramProtocolServer) handlePacket(packet *gamedata.Packet) {
+//	switch packet.Header.OpCode {
+//	case gamedata.Header_SimulationState:
+//		{
+//			packetQueue = append(packetQueue, *packet)
+//		}
+//		break
+//	}
+//}
 
 //service := hostName + ":" + portNum
 //udpAddr, err := net.ResolveUDPAddr("udp4", service)
