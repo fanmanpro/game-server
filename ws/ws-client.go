@@ -56,14 +56,12 @@ func (w *WebSocketClient) Connect() {
 		log.Fatal("dial:", err)
 	}
 
-	defer c.Close()
-
 	w.workerPool.Start()
 
 	gameServerJoined := &gamedata.GameServerOnline{
 		Secret:   "fanmanpro",
 		Region:   "Canada",
-		Capacity: 1,
+		Capacity: int32(w.gameServer.Capacity()),
 	}
 	data, err := ptypes.MarshalAny(gameServerJoined)
 	if err != nil {
@@ -77,20 +75,22 @@ func (w *WebSocketClient) Connect() {
 		Data: data,
 	}
 
-	w.workerPool.ScheduleJob(func() error { return w.send(packet, c) })
+	w.workerPool.ScheduleJob(func(errChan chan error) {
+		errChan <- w.send(packet, c)
+	})
 
 	disconnected := make(chan bool, 1)
 	go func() {
 		for {
-			log.Printf("waiting for packet")
+			log.Printf("[WS] waiting for packet")
 			mt, data, err := c.ReadMessage()
 			if err != nil {
 				log.Printf("err: %v", err)
 				disconnected <- true
 			}
 			if mt == websocket.BinaryMessage {
-				err := w.workerPool.ScheduleJob(
-					func() error {
+				w.workerPool.ScheduleJob(
+					func(errChan chan error) {
 						packet := &gamedata.Packet{}
 						err = proto.Unmarshal(data, packet)
 						if err != nil {
@@ -98,12 +98,9 @@ func (w *WebSocketClient) Connect() {
 						}
 						log.Printf("receiving packet %v over connection %v from %v to %v", packet.Header.OpCode, packet.Header.Cid, c.RemoteAddr().String(), c.LocalAddr().String())
 						log.Printf("recv: %s", packet.Header.OpCode)
-						return w.handlePacket(c, packet)
+						errChan <- w.handlePacket(c, packet)
 					},
 				)
-				if err != nil {
-					log.Printf("err: %s", err)
-				}
 			}
 		}
 	}()
@@ -117,11 +114,11 @@ func (w *WebSocketClient) Connect() {
 		{
 			// Cleanly close the connection by sending a close message and then
 			// waiting (with timeout) for the server to close the connection.
-			err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+			err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "test"))
 			if err != nil {
-				log.Println("write close:", err)
 				return
 			}
+			c.Close()
 		}
 		break
 	}
@@ -151,7 +148,6 @@ func (w *WebSocketClient) handlePacket(c *websocket.Conn, packet *gamedata.Packe
 		}
 	case gamedata.Header_GameServerStart:
 		{
-			log.Printf("HELLO?!")
 			if w.udpServer == nil {
 				return errors.New("UDP server doesn't exist")
 			}
@@ -161,18 +157,21 @@ func (w *WebSocketClient) handlePacket(c *websocket.Conn, packet *gamedata.Packe
 			if err != nil {
 				return errors.New(fmt.Sprintf("err: invalid %v data. err: %v", gamedata.Header_GameServerStart, err))
 			}
-			for i, cl := range gameServerStart.Clients {
-				w.gameServer.NewClient(i, &client.UDPClient{
+			for _, cl := range gameServerStart.Clients {
+				w.gameServer.NewClient(&client.UDPClient{
 					Client: &client.Client{
 						CID:    cl.ID,
 						IPAddr: cl.Address,
 					},
-					Send: make(chan *[]byte, 1),
-				},
-				)
+					Send: make(chan gamedata.Packet, 1),
+				})
 			}
-
+			w.gameServer.NewSimulationServer(&client.UDPClient{
+				Client: &client.Client{},
+				Send:   make(chan gamedata.Packet, 1),
+			})
 			go w.udpServer.Start()
+
 			//w.gameServer.clients =
 
 			id, err := uuid.NewUUID()
@@ -195,7 +194,10 @@ func (w *WebSocketClient) handlePacket(c *websocket.Conn, packet *gamedata.Packe
 			}
 
 			//packetQueue = append(packetQueue, packet)
-			return w.workerPool.ScheduleJob(func() error { return w.send(packet, c) })
+			w.workerPool.ScheduleJob(func(errChan chan error) {
+				errChan <- w.send(packet, c)
+			})
+			return nil
 		}
 	default:
 		{
