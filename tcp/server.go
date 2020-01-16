@@ -55,31 +55,6 @@ func (t *Server) accept() {
 	}
 }
 
-func (t *Server) writeConn(c *net.TCPConn, send chan *gamedata.Packet, stop chan bool) {
-	for {
-		select {
-		case first := <-stop:
-			if first {
-				stop <- false
-				return
-			} else {
-				c.Close()
-				return
-			}
-		case packet := <-send:
-			//fmt.Printf("[TCP] Writing data for %v\n", c.RemoteAddr().String())
-			out, err := proto.Marshal(packet)
-			if err != nil {
-				fmt.Printf("[TCP] Failed marshalling %v. Reason: %v\n", packet.OpCode, err.Error())
-				continue
-			}
-			c.Write(out)
-			fmt.Printf("[TCP] Wrote %v bytes for %v\n", len(out), c.RemoteAddr().String())
-			break
-		}
-	}
-}
-
 func (t *Server) procConn(c *net.TCPConn) {
 	buffer := make([]byte, 1024)
 
@@ -153,6 +128,31 @@ func (t *Server) procConn(c *net.TCPConn) {
 
 				t.ReadQueue <- packet
 			}
+			break
+		}
+	}
+}
+
+func (t *Server) writeConn(c *net.TCPConn, send chan *gamedata.Packet, stop chan bool) {
+	for {
+		select {
+		case first := <-stop:
+			if first {
+				stop <- false
+				return
+			} else {
+				c.Close()
+				return
+			}
+		case packet := <-send:
+			//fmt.Printf("[TCP] Writing data for %v\n", c.RemoteAddr().String())
+			out, err := proto.Marshal(packet)
+			if err != nil {
+				fmt.Printf("[TCP] Failed marshalling %v. Reason: %v\n", packet.OpCode, err.Error())
+				continue
+			}
+			c.Write(out)
+			fmt.Printf("[TCP] Wrote %v bytes for %v\n", len(out), c.RemoteAddr().String())
 			break
 		}
 	}

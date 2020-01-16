@@ -8,12 +8,14 @@ import (
 )
 
 func main() {
-	tcpServer := tcp.NewServer("127.0.0.1", "1541")
-	udpServer := udp.NewServer("127.0.0.1", "1542", "1543")
+	clientTCPServer := tcp.NewServer("127.0.0.1", "1541")
+	clientUDPServer := udp.NewServer("127.0.0.1", "1542")
 
-	gameServer := gameserver.New(udpServer, tcpServer)
+	simulationUDPServer := udp.NewServer("127.0.0.1", "1541")
 
-	simClient, err := client.New()
+	gameServer := gameserver.New(simulationUDPServer, clientUDPServer, clientTCPServer)
+
+	simClient, err := client.NewSim()
 	if err != nil {
 		return
 	}
@@ -22,7 +24,7 @@ func main() {
 
 	// the coordinator must eventually create new clients when they connection to the WS server and then added to the game server
 	{
-		client, err := client.NewTest()
+		client, err := client.NewExplicit("abc")
 		if err != nil {
 			return
 		}
@@ -30,9 +32,4 @@ func main() {
 	}
 
 	gameServer.Start()
-
-	//coordinatorIP := "127.0.0.1"
-	//coordinatorPort := "1540"
-	//wsClient := ws.NewClient(gameServer, coordinatorIP, coordinatorPort, udpServer)
-	//wsClient.Connect()
 }
