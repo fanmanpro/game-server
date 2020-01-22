@@ -22,7 +22,7 @@ type Server struct {
 
 // NewServer initializes a new UDP server without starting it
 func NewServer(ip string, port string) *Server {
-	return &Server{ip: ip, port: port, acceptedAddrs: make([]*net.UDPAddr, 0), ReadQueue: make(chan *gamedata.Packet, 10), AcceptQueue: make(chan *client.AcceptUDPPacket, 1)}
+	return &Server{ip: ip, port: port, acceptedAddrs: make([]*net.UDPAddr, 0), ReadQueue: make(chan *gamedata.Packet, 10), AcceptQueue: make(chan *client.AcceptUDPPacket, 2)}
 }
 
 // AcceptAddress todo
@@ -66,7 +66,6 @@ func (u *Server) procConn(c *net.UDPConn) {
 	//acceptedAddr := make([]*net.UDPAddr, 1)
 
 	// like doing this in a small scope because each client gets one and its pointer is passed into the TCPClient upon acceptance
-	send := make(chan *gamedata.Packet, 1)
 
 	//these channel don't make any sense. the problem is that there is one send channel, but procAddr does
 	//multiple "listens" to the same channel, so it takes a random one and not the one related to the address
@@ -76,9 +75,9 @@ func (u *Server) procConn(c *net.UDPConn) {
 	//there are TWO procConn goroutines active, each should have they own send, stop, and start (maybe not, think!)
 	//there are 2+ procAddr goroutines active, consider the above, take it from there
 
-	unknown := true
 	for {
-		fmt.Printf("[UDP] Awaiting to read\n")
+		unknown := true
+		//fmt.Printf("[UDP] Awaiting to read\n")
 		l, addr, err := c.ReadFromUDP(buffer)
 		if err != nil {
 			fmt.Printf("[UDP] Failed reading %v. Reason: %v\n", addr.String(), err.Error())
@@ -86,19 +85,20 @@ func (u *Server) procConn(c *net.UDPConn) {
 		}
 
 		for _, a := range u.acceptedAddrs {
-			if a == addr {
+			//fmt.Printf("[UDP] ---------------------------- Accept Addr: %v vs %v\n", a, addr)
+			if a.String() == addr.String() {
 				unknown = false
 				break
 			}
 		}
 		if unknown {
 			u.AcceptAddress(addr)
+			//fmt.Printf("[UDP] ---------------------------- Accepting Addr: %v\n", addr)
 			//go u.writeAddr(c, addr, send)
 			//continue
 		}
 
-		fmt.Printf("[UDP] Read %v bytes for %v\n", l, addr.String())
-
+		//fmt.Printf("[UDP] Reading %v bytes for %v\n", l, addr.String())
 		packet := &gamedata.Packet{}
 		err = proto.Unmarshal(buffer[:l], packet)
 		if err != nil {
@@ -107,16 +107,20 @@ func (u *Server) procConn(c *net.UDPConn) {
 
 		if unknown {
 			unknown = false
+			send := make(chan *gamedata.Packet, 10)
 			go u.writeAddr(c, addr, send)
 			acceptPacket := &client.AcceptUDPPacket{
 				CID:  packet.Cid,
 				Addr: addr,
 				Send: send,
 			}
+			//fmt.Printf("[UDP] Reading was accept\n")
 			u.AcceptQueue <- acceptPacket
+			//fmt.Printf("[UDP] Read accept\n")
 		}
 
 		u.ReadQueue <- packet
+		//fmt.Printf("[UDP] Read %v bytes for %v\n", l, addr.String())
 		//if packet.OpCode == gamedata.Header_ClientDatagramAddress {
 		//	found := false
 		//	for _, a := range acceptedAddr {
@@ -147,15 +151,14 @@ func (u *Server) writeAddr(c *net.UDPConn, a *net.UDPAddr, send chan *gamedata.P
 	for {
 		select {
 		case packet := <-send:
-			fmt.Printf("[UDP] Writing data for %v\n", a.String())
+			//fmt.Printf("[UDP] Writing data for %v\n", a.String())
 			out, err := proto.Marshal(packet)
 			if err != nil {
 				fmt.Printf("[UDP] Failed marshalling %v. Reason: %v\n", packet.OpCode, err.Error())
 				continue
 			}
 			c.WriteToUDP(out, a)
-			fmt.Printf("[UDP] Wrote %v bytes for %v\n", len(out), a.String())
-			break
+			//fmt.Printf("[UDP] Wrote %v bytes to %v\n", len(out), a.String())
 		}
 	}
 }

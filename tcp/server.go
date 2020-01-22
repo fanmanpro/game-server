@@ -22,7 +22,7 @@ type Server struct {
 
 // NewServer initializes a new UDP server without starting it
 func NewServer(ip string, port string) *Server {
-	return &Server{ip: ip, port: port, ReadQueue: make(chan *gamedata.Packet, 1), AcceptQueue: make(chan *client.AcceptTCPPacket, 1)}
+	return &Server{ip: ip, port: port, ReadQueue: make(chan *gamedata.Packet, 10), AcceptQueue: make(chan *client.AcceptTCPPacket, 2)}
 }
 
 // Start TODO

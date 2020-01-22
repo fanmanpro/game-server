@@ -57,15 +57,15 @@ type GameServer struct {
 }
 
 // New TODO
-func New(simUDP *udp.Server, clientUDP *udp.Server, clientTCP *tcp.Server) *GameServer {
+func New(n int, simUDP *udp.Server, clientUDP *udp.Server, clientTCP *tcp.Server) *GameServer {
 	return &GameServer{
 		simUDPServer:    simUDP,
 		clientUDPServer: clientUDP,
 		clientTCPServer: clientTCP,
 		phase:           make(chan Phase, 5),                // create a new phase channel when the game server restarts (and push in Initializing phase)
-		clients:         make(map[string]*client.Client, 1), // capacity should be based on what coordinator tells the game server
-		clientJoinQueue: make(chan *client.Client, 1),       // capacity should be based on what coordinator tells the game server
-		clientSeatQueue: make(chan *client.Client, 1),       // capacity should be based on what coordinator tells the game server
+		clients:         make(map[string]*client.Client, n), // capacity should be based on what coordinator tells the game server
+		clientJoinQueue: make(chan *client.Client, n),       // capacity should be based on what coordinator tells the game server
+		clientSeatQueue: make(chan *client.Client, n),       // capacity should be based on what coordinator tells the game server
 	}
 }
 
@@ -142,12 +142,14 @@ func (g *GameServer) joining() {
 		select {
 		case acceptPacket := <-g.simUDPServer.AcceptQueue:
 			{
+				fmt.Printf("[UDP] HEEEEEEEEEY222222222222222\n")
 				err := g.acceptUDPSimClient(acceptPacket.CID, acceptPacket.Addr, acceptPacket.Send)
 
 				if err != nil {
 					fmt.Println(err)
 					continue
 				}
+				fmt.Printf("[GMS] Simulation client trusted\n")
 
 				// because this should be all the player clients, and the simulation client
 				if g.clientsJoined == len(g.clients) && g.simulationClient.UDPConn.Addr != nil {
@@ -157,6 +159,7 @@ func (g *GameServer) joining() {
 			}
 		case acceptPacket := <-g.clientUDPServer.AcceptQueue:
 			{
+				fmt.Printf("[UDP] HEEEEEEEEEY222222222222222\n")
 				err := g.acceptUDPClient(acceptPacket.CID, acceptPacket.Addr, acceptPacket.Send)
 
 				if err != nil {
@@ -165,6 +168,8 @@ func (g *GameServer) joining() {
 				}
 
 				g.clientsJoined++
+
+				fmt.Printf("[GMS] UDP client joined %v\n", g.clientsJoined)
 
 				// because this should be all the player clients, and the simulation client
 				if g.clientsJoined == len(g.clients) && g.simulationClient.UDPConn.Addr != nil {
@@ -185,6 +190,8 @@ func (g *GameServer) joining() {
 				c.TCPConn.Send <- &gamedata.Packet{
 					OpCode: gamedata.Header_ClientTrust,
 				}
+
+				fmt.Printf("[GMS] Client trusted\n")
 
 				// obviously we only want to seat the player clients and not the simulation client
 				if c != g.simulationClient {
@@ -209,14 +216,15 @@ func (g *GameServer) seating() {
 	fmt.Printf("[GMS] Phase Start: Seating\n")
 	defer fmt.Printf("[GMS] Phase End: Seating\n")
 
-	g.phase <- Running
-	return
+	//g.phase <- Running
+	//return
 	for {
 		select {
 		case p := <-g.clientTCPServer.ReadQueue:
 			go g.handlePacket(p)
 			break
 		case p := <-g.clientSeatQueue:
+			fmt.Println("Seating client")
 			g.clientsSeated++
 			g.simulationClient.TCPConn.Send <- &gamedata.Packet{
 				OpCode: gamedata.Header_ClientSeat,
@@ -238,17 +246,14 @@ func (g *GameServer) running() {
 	for {
 		select {
 		case p := <-g.clientTCPServer.ReadQueue:
-			fmt.Printf("[GMS][TCP] Handling Client Packet\n")
 			go g.handlePacket(p)
-			break
-		case p := <-g.clientUDPServer.ReadQueue:
-			fmt.Printf("[GMS][UDP] Handling Client Packet\n")
-			go g.handlePacket(p)
-			break
-		case p := <-g.simUDPServer.ReadQueue:
-			fmt.Printf("[GMS][UDP] Handling Simulation Packet\n")
-			go g.handlePacket(p)
-			break
+			continue
+		case q := <-g.clientUDPServer.ReadQueue:
+			go g.handlePacket(q)
+			continue
+		case r := <-g.simUDPServer.ReadQueue:
+			go g.handlePacket(r)
+			continue
 		}
 	}
 }
