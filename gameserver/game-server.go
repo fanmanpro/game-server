@@ -138,11 +138,14 @@ func (g *GameServer) joining() {
 	fmt.Printf("[GMS] Phase Start: Joining\n")
 	defer fmt.Printf("[GMS] Phase End: Joining\n")
 
+	g.clientUDPServer.ReadQueue = make(chan *gamedata.Packet, 10)
+	g.clientTCPServer.ReadQueue = make(chan *gamedata.Packet, 10)
+	g.simUDPServer.ReadQueue = make(chan *gamedata.Packet, 10)
+
 	for {
 		select {
 		case acceptPacket := <-g.simUDPServer.AcceptQueue:
 			{
-				fmt.Printf("[UDP] HEEEEEEEEEY222222222222222\n")
 				err := g.acceptUDPSimClient(acceptPacket.CID, acceptPacket.Addr, acceptPacket.Send)
 
 				if err != nil {
@@ -159,7 +162,6 @@ func (g *GameServer) joining() {
 			}
 		case acceptPacket := <-g.clientUDPServer.AcceptQueue:
 			{
-				fmt.Printf("[UDP] HEEEEEEEEEY222222222222222\n")
 				err := g.acceptUDPClient(acceptPacket.CID, acceptPacket.Addr, acceptPacket.Send)
 
 				if err != nil {
@@ -216,6 +218,7 @@ func (g *GameServer) seating() {
 	fmt.Printf("[GMS] Phase Start: Seating\n")
 	defer fmt.Printf("[GMS] Phase End: Seating\n")
 
+	g.clientTCPServer.ReadQueue = make(chan *gamedata.Packet, 10)
 	//g.phase <- Running
 	//return
 	for {
@@ -242,6 +245,10 @@ func (g *GameServer) running() {
 	// the simulation is running so now we need to start reading UDP packets
 	fmt.Printf("[GMS] Phase Start: Running\n")
 	defer fmt.Printf("[GMS] Phase End: Running\n")
+
+	g.clientUDPServer.ReadQueue = make(chan *gamedata.Packet, 10)
+	g.clientTCPServer.ReadQueue = make(chan *gamedata.Packet, 10)
+	g.simUDPServer.ReadQueue = make(chan *gamedata.Packet, 10)
 
 	for {
 		select {
@@ -297,7 +304,6 @@ func (g *GameServer) handlePacket(p *gamedata.Packet) {
 		break
 	case gamedata.Header_Context:
 		{
-			//fmt.Println("Header_Context")
 			for _, c := range g.clients {
 				c.UDPConn.Send <- p
 			}

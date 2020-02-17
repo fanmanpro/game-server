@@ -111,7 +111,6 @@ func (t *Server) procConn(c *net.TCPConn) {
 		default:
 			{
 				len, err := c.Read(buffer)
-				fmt.Printf("[TCP] Read %v bytes for %v\n", len, c.RemoteAddr().String())
 
 				if err != nil {
 					fmt.Printf("[TCP] Failed reading %v. Reason: %v\n", c.RemoteAddr().String(), err.Error())
@@ -125,6 +124,8 @@ func (t *Server) procConn(c *net.TCPConn) {
 				if err != nil {
 					log.Println(err)
 				}
+
+				fmt.Printf("[TCP] Read %v %v bytes for %v\n", len, packet.OpCode, c.RemoteAddr().String())
 
 				t.ReadQueue <- packet
 			}
