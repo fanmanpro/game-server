@@ -11,6 +11,8 @@ import (
 )
 
 type Server struct {
+	addressX *net.UDPAddr
+
 	socketA  *net.UDPConn
 	addressA *net.UDPAddr
 
@@ -30,7 +32,12 @@ func NewServer() *Server {
 
 func (s *Server) Start() {
 	var err error
-	s.addressA, err = net.ResolveUDPAddr("udp4", "127.0.0.1:1541")
+	s.addressX, err = net.ResolveUDPAddr("udp4", "127.0.0.1:1541")
+	if err != nil {
+		return
+	}
+
+	s.addressA, err = net.ResolveUDPAddr("udp4", "127.0.0.1:9737")
 	if err != nil {
 		return
 	}
@@ -40,28 +47,27 @@ func (s *Server) Start() {
 		return
 	}
 
-	s.socketA, err = net.ListenUDP("udp", s.addressA)
+	s.socketA, err = net.DialUDP("udp", s.addressX, s.addressA)
 	if err != nil {
 		return
 	}
 
-	DONT USE LISTEN!
+	//DONT USE LISTEN!
 
-	s.socketB, err = net.UDP.ListenUDP("udp", s.addressB)
+	s.socketB, err = net.DialUDP("udp", nil, s.addressB)
 	if err != nil {
 		return
 	}
+	//ticker := time.NewTicker(s.rate * time.Millisecond)
 
-	ticker := time.NewTicker(s.rate * time.Millisecond)
 	s.stop = make(chan bool)
 	go func() {
 		for {
 			select {
 			case <-s.stop:
 				return
-			case <-ticker.C:
+			default:
 				s.update()
-				s.tick++
 			}
 		}
 	}()
@@ -72,38 +78,50 @@ func (s *Server) Stop() {
 	s.stop <- true
 }
 
+//func (s *Server) update(c chan bool) {
 func (s *Server) update() {
 	start := time.Now()
+	end := time.Now().Add(s.rate * time.Millisecond)
+
+	err := s.socketA.SetReadDeadline(time.Now().Add((s.rate) * time.Millisecond))
+	if err != nil {
+		return
+	}
+
+	data := []byte{0}
+
 	// write to ask for context
-	s.socketA.WriteToUDP(make([]byte, 0), s.addressA)
+	s.socketA.Write(data)
 
 	// wait for context
 	buffer := make([]byte, 1024)
-	l, _, err := s.socketA.ReadFromUDP(buffer)
+	_, err = s.socketA.Read(buffer)
 	if err != nil {
-		//fmt.Printf("[UDP] Failed reading %v. Reason: %v\n", addr.String(), err.Error())
+		fmt.Printf("%v\n", err)
+		fmt.Printf("tick: %v (%vms) (timeout)\n", s.tick, time.Now().Sub(start).Milliseconds())
 		return
 	}
 
 	// unmarshal context
-	packet := &gamedata.Packet{}
-	err = proto.Unmarshal(buffer[:l], packet)
-	if err != nil {
-		log.Println(err)
-	}
+	//packet := &gamedata.Packet{}
+	//err = proto.Unmarshal(buffer[:l], packet)
+	//if err != nil {
+	//	log.Println(err)
+	//}
 
-	// compare
-	//fmt.Println("here")
-	fmt.Printf("duration: %v\n", time.Now().Sub(start).Nanoseconds())
+	fmt.Printf("tick: %v (%vms trip) (%vms sleep)\n", s.tick, time.Now().Sub(start).Milliseconds(), end.Sub(time.Now()).Milliseconds())
+	s.tick++
+	time.Sleep(end.Sub(time.Now()))
 }
 
 func (s *Server) receive() {
+	fmt.Printf("receiving\n")
 	for {
 		// wait for context
 		buffer := make([]byte, 1024)
-		l, addr, err := s.socketB.ReadFromUDP(buffer)
+		l, err := s.socketB.Read(buffer)
 		if err != nil {
-			fmt.Printf("[UDP] Failed reading %v. Reason: %v\n", addr.String(), err.Error())
+			//fmt.Printf("[UDP] Failed reading %v. Reason: %v\n", addr.String(), err.Error())
 			return
 		}
 
