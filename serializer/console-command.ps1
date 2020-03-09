@@ -1,0 +1,2 @@
+﻿protoc --csharp_out=$env:USERPROFILE\source\repos\threaded-network-protocol\Assets\Serializable\ --go_out=$env:USERPROFILE\go\src\github.com\fanmanpro\game-server\serializable\ serializable.proto
+Read-Host -Prompt "Press Enter to continue"
