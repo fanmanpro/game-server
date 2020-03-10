@@ -6,15 +6,20 @@ package serializable;
 message Context {
     int32 tick = 1;
     repeated Transform transforms = 2;
-    // repeated Rigidbody rigidBodies = 2;
+    repeated Rigidbody rigidBodies = 3;
 }
 
 message Transform {
     string ID = 1;
-    Vector2 position = 2;
-    Vector2 rotation = 3;
+    Vector3 position = 2;
+    float rotation = 3;
     // Prefab Prefab = 2;
-    // float rotation = 4;
+}
+message Rigidbody {
+    string ID = 1;
+    Vector3 position = 2;
+    float rotation = 3;
+    Vector2 velocity = 4;
 }
 
 // OLD VERSION STUFF STARTS HERE
@@ -50,13 +55,6 @@ message GameObject {
     float rotation = 4;
 }
 
-message Rigidbody {
-    string ID = 1;
-    Prefab Prefab = 2;
-    Vector2 position = 3;
-    float rotation = 4;
-    Vector2 velocity = 5;
-}
 
 message Velocity {
     string ID = 1;
@@ -84,6 +82,12 @@ message Force {
 message Vector2 {
     float x = 1;
     float y = 2;
+}
+
+message Vector3 {
+    float x = 1;
+    float y = 2;
+    float z = 3;
 }
 
 message Header {

@@ -30,7 +30,7 @@ type Server struct {
 }
 
 func NewServer() *Server {
-	return &Server{rate: 100, tick: 10} // 100 is 10 ticks per second, 50 is 20, 33 is 30, etc.
+	return &Server{rate: 50, tick: 10} // 100 is 10 ticks per second, 50 is 20, 33 is 30, etc.
 }
 
 func (s *Server) Start() error {
@@ -147,7 +147,7 @@ func (s *Server) update() {
 
 	// define the outgoing packet we want to send to the sim
 	s.tick++
-	fmt.Printf("tick incremented\n")
+	//fmt.Printf("tick incremented\n")
 
 	outgoing := &serializable.Context{
 		Tick: s.tick,
