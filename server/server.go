@@ -113,7 +113,6 @@ func (s *Server) update() {
 	l, err := s.socketSim.Read(buffer)
 	if err != nil {
 		//fmt.Printf("%v\n", err)
-		//fmt.Printf("slept\n")
 		return
 	}
 
@@ -121,7 +120,6 @@ func (s *Server) update() {
 	incoming := &serializable.Context{}
 	readBuffer := buffer[0:l]
 	err = proto.Unmarshal(readBuffer, incoming)
-	//fmt.Printf("%v\n", incoming.Tick)
 	if err != nil {
 		fmt.Printf("%v\n", err)
 	}
