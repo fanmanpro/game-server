@@ -117,7 +117,7 @@ func (s *Server) update() {
 	}
 
 	// unmarshal the incoming context
-	incoming := &serializable.Context{}
+	incoming := &serializable.Context3D{}
 	readBuffer := buffer[0:l]
 	err = proto.Unmarshal(readBuffer, incoming)
 	if err != nil {
@@ -147,7 +147,7 @@ func (s *Server) update() {
 	s.tick++
 	//fmt.Printf("tick incremented\n")
 
-	outgoing := &serializable.Context{
+	outgoing := &serializable.Context3D{
 		Tick: s.tick,
 	}
 
@@ -202,7 +202,7 @@ func (s *Server) receiveClient() {
 		}
 
 		// unmarshal context from client. validate then forward.
-		context := &serializable.Context{}
+		context := &serializable.Context3D{}
 		err = proto.Unmarshal(buffer[:l], context)
 		if err != nil {
 			log.Println(err)

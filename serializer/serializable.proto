@@ -3,10 +3,16 @@ import "google/protobuf/any.proto";
 
 package serializable;
 
-message Context {
+message Context3D {
     int32 tick = 1;
     repeated Transform transforms = 2;
-    repeated Rigidbody rigidBodies = 3;
+    repeated Rigidbody3D rigidBodies = 3;
+}
+
+message Context2D {
+    int32 tick = 1;
+    repeated Transform transforms = 2;
+    repeated Rigidbody2D rigidBodies = 3;
 }
 
 message Transform {
@@ -15,11 +21,18 @@ message Transform {
     float rotation = 3;
     // Prefab Prefab = 2;
 }
-message Rigidbody {
+message Rigidbody2D {
+    string ID = 1;
+    Vector2 position = 2;
+    float rotation = 3;
+    Vector2 velocity = 4;
+}
+
+message Rigidbody3D {
     string ID = 1;
     Vector3 position = 2;
     float rotation = 3;
-    Vector2 velocity = 4;
+    Vector3 velocity = 4;
 }
 
 // OLD VERSION STUFF STARTS HERE
