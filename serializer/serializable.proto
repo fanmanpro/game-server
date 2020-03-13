@@ -18,21 +18,39 @@ message Context2D {
 message Transform {
     string ID = 1;
     Vector3 position = 2;
-    float rotation = 3;
+    Quaternion rotation = 3;
     // Prefab Prefab = 2;
 }
 message Rigidbody2D {
     string ID = 1;
     Vector2 position = 2;
-    float rotation = 3;
+    Quaternion rotation = 3;
     Vector2 velocity = 4;
 }
 
 message Rigidbody3D {
     string ID = 1;
     Vector3 position = 2;
-    float rotation = 3;
+    Quaternion rotation = 3;
     Vector3 velocity = 4;
+}
+
+message Vector2 {
+    float x = 1;
+    float y = 2;
+}
+
+message Vector3 {
+    float x = 1;
+    float y = 2;
+    float z = 3;
+}
+
+message Quaternion {
+    float w = 1;
+    float x = 2;
+    float y = 3;
+    float z = 4;
 }
 
 // OLD VERSION STUFF STARTS HERE
@@ -92,16 +110,6 @@ message Force {
     }
 }
 
-message Vector2 {
-    float x = 1;
-    float y = 2;
-}
-
-message Vector3 {
-    float x = 1;
-    float y = 2;
-    float z = 3;
-}
 
 message Header {
     // this is a connection id that expires once the coordinator connection is

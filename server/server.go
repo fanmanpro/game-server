@@ -59,12 +59,16 @@ func (s *Server) Start() error {
 	if err != nil {
 		return err
 	}
+	s.socketSim.SetWriteBuffer(64 * 1024 * 1024)
+	s.socketSim.SetReadBuffer(64 * 1024 * 1024)
 	//go s.receiveSim()
 
 	s.socketClient, err = net.DialUDP("udp", s.localClientAddress, s.remoteClientAddress)
 	if err != nil {
 		return err
 	}
+	s.socketClient.SetWriteBuffer(64 * 1024 * 1024)
+	s.socketClient.SetReadBuffer(64 * 1024 * 1024)
 
 	// start the server ticker. careful for this one.
 	s.stop = make(chan bool)
@@ -109,10 +113,14 @@ func (s *Server) update() {
 	}
 
 	// wait for a context to come back from the sim
-	buffer := make([]byte, 1024)
+	buffer := make([]byte, 64*1024*1024)
 	l, err := s.socketSim.Read(buffer)
 	if err != nil {
-		//fmt.Printf("%v\n", err)
+		//err = &OpError{Op: "read", Net: c.fd.net, Source: c.fd.laddr, Addr: c.fd.raddr, Err: err}
+		//if n != 0 || err == nil || !err.(Error).Timeout() {
+		if !err.(net.Error).Timeout() {
+			fmt.Printf("%+v\n", err)
+		}
 		return
 	}
 
@@ -194,7 +202,7 @@ func (s *Server) receiveClient() {
 	fmt.Printf("receiving for client\n")
 	for {
 		// wait for context
-		buffer := make([]byte, 1024)
+		buffer := make([]byte, 64*1024*1024)
 		l, err := s.socketClient.Read(buffer)
 		if err != nil {
 			//fmt.Printf("[UDP] Failed reading %v. Reason: %v\n", addr.String(), err.Error())
@@ -209,6 +217,6 @@ func (s *Server) receiveClient() {
 		}
 
 		// compare
-		fmt.Println("here")
+		//fmt.Println("here")
 	}
 }
