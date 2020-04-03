@@ -11,4 +11,5 @@ func main() {
 
 	err := gameServer.Start()
 	fmt.Println(err)
+	defer gameServer.Stop()
 }

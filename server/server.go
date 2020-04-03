@@ -10,23 +10,37 @@ import (
 
 	"github.com/fanmanpro/game-server/serializable"
 	"github.com/golang/protobuf/proto"
+	"github.com/golang/protobuf/ptypes"
 )
 
+const localhostAddress string = "127.0.0.1"
+const tcpNetwork string = "tcp4"
+const udpNetwork string = "udp4"
+
 type Server struct {
-	localSimAddress  *net.UDPAddr
-	remoteSimAddress *net.UDPAddr
+	// TCP
+	tcpSimSocket           *net.TCPConn
+	tcpClientSocket        *net.TCPConn
+	tcpLocalSimAddress     *net.TCPAddr
+	tcpRemoteSimAddress    *net.TCPAddr
+	tcpLocalClientAddress  *net.TCPAddr
+	tcpRemoteClientAddress *net.TCPAddr
 
-	localClientAddress  *net.UDPAddr
-	remoteClientAddress *net.UDPAddr
+	// UDP
+	udpSimSocket           *net.UDPConn
+	udpClientSocket        *net.UDPConn
+	udpLocalSimAddress     *net.UDPAddr
+	udpRemoteSimAddress    *net.UDPAddr
+	udpLocalClientAddress  *net.UDPAddr
+	udpRemoteClientAddress *net.UDPAddr
 
-	socketSim    *net.UDPConn
-	socketClient *net.UDPConn
-
-	rate   time.Duration
-	tick   int32
-	seater Seater
-
-	stop chan bool
+	// Game Server
+	rate       time.Duration
+	tick       int32
+	seater     Seater
+	stop       chan bool
+	seatsByTCP map[*net.UDPAddr]*net.TCPAddr
+	seats      map[string]*net.TCPAddr
 }
 
 func NewServer() *Server {
@@ -34,60 +48,146 @@ func NewServer() *Server {
 }
 
 func (s *Server) Start() error {
-	var err error
-	s.localSimAddress, err = net.ResolveUDPAddr("udp4", "127.0.0.1:1541")
+
+	// ✓ open tcp sockets for sim and wait for it to connect
+	// ✓ open tcp sockets for clients and wait for them to connect
+	// ✓ listen for configuration packet from sim
+	// ✓ create seats based on configuration
+	// ✓ assign tcp addr to each client, populating the seats created from configuration
+
+	// open udp sockets for sim
+	// open udp sockets for clients
+
+	// send tcp seat configuration packet to all clients (not sim)
+
+	// send tcp packet to sim to unpause simuluation and open the flood gates
+
+	err := s.openTCPSockets()
 	if err != nil {
 		return err
 	}
 
-	s.remoteSimAddress, err = net.ResolveUDPAddr("udp4", "127.0.0.1:9737")
-	if err != nil {
-		return err
-	}
-
-	s.localClientAddress, err = net.ResolveUDPAddr("udp4", "127.0.0.1:1542")
-	if err != nil {
-		return err
-	}
-
-	s.remoteClientAddress, err = net.ResolveUDPAddr("udp4", "127.0.0.1:9738")
-	if err != nil {
-		return err
-	}
-
-	s.socketSim, err = net.DialUDP("udp", s.localSimAddress, s.remoteSimAddress)
-	if err != nil {
-		return err
-	}
-	s.socketSim.SetWriteBuffer(64 * 1024 * 1024)
-	s.socketSim.SetReadBuffer(64 * 1024 * 1024)
-	//go s.receiveSim()
-
-	s.socketClient, err = net.DialUDP("udp", s.localClientAddress, s.remoteClientAddress)
-	if err != nil {
-		return err
-	}
-	s.socketClient.SetWriteBuffer(64 * 1024 * 1024)
-	s.socketClient.SetReadBuffer(64 * 1024 * 1024)
-
-	// start the server ticker. careful for this one.
-	s.stop = make(chan bool)
-	go func() {
+	func() {
+		fmt.Println("listening for TCP")
 		for {
-			select {
-			case <-s.stop:
+			// Make a buffer to hold incoming data.
+			buffer := make([]byte, 64*1024)
+			// Read the incoming connection into the buffer.
+			l, err := s.tcpSimSocket.Read(buffer)
+			if err != nil {
+				if !err.(net.Error).Timeout() {
+					fmt.Printf("%+v\n", err)
+				}
+				break
+			}
+
+			// unmarshal the incoming seat configuration
+			incoming := &serializable.Packet{}
+			readBuffer := buffer[0:l]
+			err = proto.Unmarshal(readBuffer, incoming)
+			if err != nil {
+				fmt.Printf("%v\n", err)
+				break
+			}
+
+			if incoming.OpCode == serializable.Packet_SeatConfiguration {
+				seatConfiguration := &serializable.SeatConfiguration{}
+				err = proto.Unmarshal(incoming.Data.Value, seatConfiguration)
+				if err != nil {
+					fmt.Printf("Invalid seat configuration packet: %v\n", err)
+					break
+				}
+				seatCount := len(seatConfiguration.Seats)
+				fmt.Printf("Server registered %v seats from simulation\n", seatCount)
+				s.seatsByTCP = make(map[*net.UDPAddr]*net.TCPAddr, seatCount)
+				s.seats = make(map[string]*net.TCPAddr, seatCount)
+
+				// open the UDP sockets here so they are open once the clients receive they seats
+				// REFACTOR: Start Function
+				err = s.openUDPSockets()
+				if err != nil {
+					return
+				}
+				// start the server ticker. careful for this one.
+				s.stop = make(chan bool)
+				go func() {
+					for {
+						select {
+						case <-s.stop:
+							return
+						default:
+							s.update()
+						}
+					}
+				}()
+				// REFACTOR: End Function
+
+				for _, seat := range seatConfiguration.Seats {
+					s.seats[seat.GUID] = s.tcpRemoteClientAddress
+					fmt.Printf("%v seated at %v\n", s.tcpRemoteClientAddress.Port, seat.GUID)
+					ss := &serializable.Seat{
+						GUID: seat.GUID,
+					}
+					any, err := ptypes.MarshalAny(ss)
+					if err != nil {
+						fmt.Printf("%v\n", err)
+						return
+					}
+
+					seatPacket :=
+						&serializable.Packet{
+							OpCode: serializable.Packet_Seat,
+							Data:   any,
+						}
+
+					data, err := proto.Marshal(seatPacket)
+					if err != nil {
+						fmt.Printf("%v\n", err)
+						return
+					}
+					s.tcpClientSocket.Write(data)
+					break
+				}
 				return
-			default:
-				s.update()
 			}
 		}
 	}()
+
+	if err != nil {
+		return err
+	}
+
+	runSimulationPacket := &serializable.Packet{OpCode: serializable.Packet_RunSimulation}
+	data, err := proto.Marshal(runSimulationPacket)
+	if err != nil {
+		fmt.Printf("%v\n", err)
+		return err
+	}
+	s.tcpSimSocket.Write(data)
+
+	// send an initial packet so the simulation server can start its read/write loop
+	// REFACTOR: Start Function
+	outgoing := &serializable.Context3D{
+		Tick: s.tick,
+	}
+	data, err = proto.Marshal(outgoing)
+	if err != nil {
+		fmt.Printf("%v\n", err)
+		return nil
+	}
+	time.Sleep(end.Sub(time.Now()))
+	s.udpSimSocket.Write(data)
+	//s.udpSimSocket.WriteTo(data, s.udpSimSocket.RemoteAddr())
+	// REFACTOR: End Function
 
 	s.receiveClient()
 	return nil
 }
 func (s *Server) Stop() {
+	fmt.Println("Closing ports")
 	s.stop <- true
+	s.tcpClientSocket.Close()
+	s.udpClientSocket.Close()
 }
 
 func (s *Server) broadcast(data []byte) {
@@ -96,7 +196,8 @@ func (s *Server) broadcast(data []byte) {
 	//	fmt.Printf("%v\n", err)
 	//	return
 	//}
-	s.socketClient.Write(data)
+	s.udpClientSocket.Write(data)
+	// s.udpClientSocket.WriteTo(data, s.udpClientSocket.RemoteAddr())
 }
 
 var sent time.Time
@@ -106,7 +207,7 @@ func (s *Server) update() {
 	end = time.Now().Add(s.rate * time.Millisecond)
 
 	// set the read deadline for when we are waiting for the returned tick
-	err := s.socketSim.SetReadDeadline(end)
+	err := s.udpSimSocket.SetReadDeadline(end)
 	if err != nil {
 		fmt.Printf("%v\n", err)
 		return
@@ -114,7 +215,7 @@ func (s *Server) update() {
 
 	// wait for a context to come back from the sim
 	buffer := make([]byte, 64*1024*1024)
-	l, err := s.socketSim.Read(buffer)
+	l, _, err := s.udpSimSocket.ReadFromUDP(buffer)
 	if err != nil {
 		//err = &OpError{Op: "read", Net: c.fd.net, Source: c.fd.laddr, Addr: c.fd.raddr, Err: err}
 		//if n != 0 || err == nil || !err.(Error).Timeout() {
@@ -140,20 +241,10 @@ func (s *Server) update() {
 		go s.broadcast(readBuffer)
 	}
 
-	//fmt.Printf("%+v\n", len(incoming.Transforms))
-
-	//data, err = proto.Marshal(incoming)
-	//if err != nil {
-	//	fmt.Printf("%v\n", err)
-	//	return
-	//}
-	//s.socketClient.Write(data)
-
 	//fmt.Printf("tick: %v (%vms trip) (%vms sleep)\n", s.tick, time.Now().Sub(start).Milliseconds(), end.Sub(time.Now()).Milliseconds())
 
 	// define the outgoing packet we want to send to the sim
 	s.tick++
-	//fmt.Printf("tick incremented\n")
 
 	outgoing := &serializable.Context3D{
 		Tick: s.tick,
@@ -169,11 +260,13 @@ func (s *Server) update() {
 	time.Sleep(end.Sub(time.Now()))
 
 	// write the outgoing packet to the socket shared with the sim
-	s.socketSim.Write(data)
+	s.udpSimSocket.Write(data)
+	// s.udpSimSocket.WriteToUDP(data, s.udpRemoteSimAddress)
+	// s.udpSimSocket.WriteTo(data, s.udpSimSocket.RemoteAddr())
 }
 
 // received a context from either
-// NO GET RID OF THIS. FROM THE SIM WE READ AFTER WE WROTE AS A LOOP. NOT THIS SEPARATE READ LOOP.
+// NO! GET RID OF THIS. FROM THE SIM WE READ AFTER WE WROTE AS A LOOP. NOT THIS SEPARATE READ LOOP.
 //func (s *Server) receiveSim() {
 //	fmt.Printf("receiving for sim\n")
 //	for {
@@ -203,20 +296,129 @@ func (s *Server) receiveClient() {
 	for {
 		// wait for context
 		buffer := make([]byte, 64*1024*1024)
-		l, err := s.socketClient.Read(buffer)
+		l, _, err := s.udpClientSocket.ReadFromUDP(buffer)
 		if err != nil {
-			//fmt.Printf("[UDP] Failed reading %v. Reason: %v\n", addr.String(), err.Error())
+			fmt.Printf("%v\n", err)
 			return
 		}
 
+		data := buffer[:l]
+
 		// unmarshal context from client. validate then forward.
 		context := &serializable.Context3D{}
-		err = proto.Unmarshal(buffer[:l], context)
+		err = proto.Unmarshal(data, context)
 		if err != nil {
 			log.Println(err)
 		}
 
 		// compare
-		//fmt.Println("here")
+		// fmt.Println("here")
+		s.udpSimSocket.Write(data)
+		// s.udpSimSocket.WriteTo(data, s.udpSimSocket.RemoteAddr())
 	}
+}
+
+func (s *Server) openTCPSockets() error {
+	var err error
+
+	s.tcpLocalSimAddress, err = net.ResolveTCPAddr(tcpNetwork, fmt.Sprintf("%v:%v", localhostAddress, "9999"))
+	if err != nil {
+		return err
+	}
+
+	s.tcpRemoteSimAddress, err = net.ResolveTCPAddr(tcpNetwork, fmt.Sprintf("%v:%v", localhostAddress, "1999"))
+	if err != nil {
+		return err
+	}
+
+	s.tcpLocalClientAddress, err = net.ResolveTCPAddr(tcpNetwork, fmt.Sprintf("%v:%v", localhostAddress, "9889")) // this should be a client address, not localhost
+	if err != nil {
+		return err
+	}
+
+	s.tcpRemoteClientAddress, err = net.ResolveTCPAddr(tcpNetwork, fmt.Sprintf("%v:%v", localhostAddress, "1889")) // this should be a client address, not localhost
+	if err != nil {
+		return err
+	}
+
+	// connect the sim
+	err = func() error {
+		attempts := 10
+		for {
+			s.tcpSimSocket, err = net.DialTCP(tcpNetwork, s.tcpLocalSimAddress, s.tcpRemoteSimAddress)
+			attempts--
+			if err == nil {
+				fmt.Println(attempts)
+				return nil
+			}
+			if attempts < 1 {
+				break
+			}
+			time.Sleep(time.Second)
+		}
+		return err
+	}()
+
+	if err != nil {
+		return err
+	}
+
+	// connect the clients
+	err = func() error {
+		attempts := 10
+		for {
+			s.tcpClientSocket, err = net.DialTCP(tcpNetwork, s.tcpLocalClientAddress, s.tcpRemoteClientAddress)
+			attempts--
+			if err == nil {
+				fmt.Println(attempts)
+				return nil
+			}
+			if attempts < 1 {
+				break
+			}
+			time.Sleep(time.Second)
+		}
+		return err
+	}()
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+func (s *Server) openUDPSockets() error {
+	var err error
+
+	s.udpLocalSimAddress, err = net.ResolveUDPAddr(udpNetwork, fmt.Sprintf("%v:%v", localhostAddress, "9998"))
+	if err != nil {
+		return err
+	}
+
+	s.udpRemoteSimAddress, err = net.ResolveUDPAddr(udpNetwork, fmt.Sprintf("%v:%v", localhostAddress, "1998"))
+	if err != nil {
+		return err
+	}
+
+	s.udpLocalClientAddress, err = net.ResolveUDPAddr(udpNetwork, fmt.Sprintf("%v:%v", localhostAddress, "9888")) // this should be a client address, not localhost
+	if err != nil {
+		return err
+	}
+
+	s.udpRemoteClientAddress, err = net.ResolveUDPAddr(udpNetwork, fmt.Sprintf("%v:%v", localhostAddress, "1888")) // this should be a client address, not localhost
+	if err != nil {
+		return err
+	}
+
+	s.udpSimSocket, err = net.DialUDP(udpNetwork, s.udpLocalSimAddress, s.udpRemoteSimAddress)
+	if err != nil {
+		return err
+	}
+
+	s.udpClientSocket, err = net.DialUDP(udpNetwork, s.udpLocalClientAddress, s.udpRemoteClientAddress)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
