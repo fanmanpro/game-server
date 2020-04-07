@@ -4,7 +4,7 @@ import "google/protobuf/any.proto";
 package serializable;
 
 message Packet {
-    OpCode opCode = 1;
+		OpCode opCode = 1;
 		google.protobuf.Any data = 2;
 
     enum OpCode {
@@ -17,6 +17,7 @@ message Packet {
         SeatConfiguration = 200;
         Seat = 201;
         RunSimulation = 202;
+				ReloadSimulation = 203;
     }
 }
 
@@ -24,16 +25,19 @@ message SeatConfiguration {
     repeated Seat seats = 1;
 }
 
+
 message Context3D {
     int32 tick = 1;
-    repeated Transform transforms = 2;
-    repeated Rigidbody3D rigidBodies = 3;
+		bool client = 2;
+    repeated Transform transforms = 3;
+    repeated Rigidbody3D rigidBodies = 4;
 }
 
 message Context2D {
     int32 tick = 1;
-    repeated Transform transforms = 2;
-    repeated Rigidbody2D rigidBodies = 3;
+		bool client = 2;
+    repeated Transform transforms = 3;
+    repeated Rigidbody2D rigidBodies = 4;
 }
 
 message Transform {

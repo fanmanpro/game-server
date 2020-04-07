@@ -44,10 +44,13 @@ type Server struct {
 }
 
 func NewServer() *Server {
-	return &Server{rate: 50, tick: 10} // 100 is 10 ticks per second, 50 is 20, 33 is 30, etc.
+	return &Server{rate: 50} // 100 is 10 ticks per second, 50 is 20, 33 is 30, etc.
 }
 
 func (s *Server) Start() error {
+	fmt.Println("starting game server")
+	s.tick = 1
+	s.stop = make(chan bool)
 
 	// ✓ open tcp sockets for sim and wait for it to connect
 	// ✓ open tcp sockets for clients and wait for them to connect
@@ -109,7 +112,6 @@ func (s *Server) Start() error {
 					return
 				}
 				// start the server ticker. careful for this one.
-				s.stop = make(chan bool)
 				go func() {
 					for {
 						select {
@@ -122,7 +124,10 @@ func (s *Server) Start() error {
 				}()
 				// REFACTOR: End Function
 
-				for _, seat := range seatConfiguration.Seats {
+				for i, seat := range seatConfiguration.Seats {
+					if i == 0 {
+						continue
+					}
 					s.seats[seat.GUID] = s.tcpRemoteClientAddress
 					fmt.Printf("%v seated at %v\n", s.tcpRemoteClientAddress.Port, seat.GUID)
 					ss := &serializable.Seat{
@@ -183,11 +188,12 @@ func (s *Server) Start() error {
 	s.receiveClient()
 	return nil
 }
-func (s *Server) Stop() {
-	fmt.Println("Closing ports")
-	s.stop <- true
-	s.tcpClientSocket.Close()
-	s.udpClientSocket.Close()
+func (s *Server) Stop(err error) {
+	fmt.Println("stopping game server")
+	// s.stop <- true
+	// s.tcpClientSocket.Close()
+	// s.udpClientSocket.Close()
+	// fmt.Printf("game server stopped (%v)\n", err)
 }
 
 func (s *Server) broadcast(data []byte) {
@@ -238,7 +244,7 @@ func (s *Server) update() {
 		fmt.Printf("context was dropped: %v vs %v (old)\n", incoming.Tick, s.tick)
 		//return
 	} else {
-		go s.broadcast(readBuffer)
+		s.broadcast(readBuffer)
 	}
 
 	//fmt.Printf("tick: %v (%vms trip) (%vms sleep)\n", s.tick, time.Now().Sub(start).Milliseconds(), end.Sub(time.Now()).Milliseconds())
@@ -302,18 +308,26 @@ func (s *Server) receiveClient() {
 			return
 		}
 
-		data := buffer[:l]
-
 		// unmarshal context from client. validate then forward.
+		data := buffer[:l]
 		context := &serializable.Context3D{}
 		err = proto.Unmarshal(data, context)
 		if err != nil {
 			log.Println(err)
 		}
 
+		context.Client = true
+
+		outgoing, err := proto.Marshal(context)
+		if err != nil {
+			fmt.Printf("%v\n", err)
+			return
+		}
+
 		// compare
 		// fmt.Println("here")
-		s.udpSimSocket.Write(data)
+		// fmt.Printf("%v | %v | v | v | v\n", s.udpClientSocket.RemoteAddr().String(), s.udpClientSocket.LocalAddr().String())
+		s.udpSimSocket.Write(outgoing)
 		// s.udpSimSocket.WriteTo(data, s.udpSimSocket.RemoteAddr())
 	}
 }
@@ -343,12 +357,12 @@ func (s *Server) openTCPSockets() error {
 
 	// connect the sim
 	err = func() error {
-		attempts := 10
+		attempts := 2
 		for {
 			s.tcpSimSocket, err = net.DialTCP(tcpNetwork, s.tcpLocalSimAddress, s.tcpRemoteSimAddress)
 			attempts--
 			if err == nil {
-				fmt.Println(attempts)
+				fmt.Println("simulation connected")
 				return nil
 			}
 			if attempts < 1 {
@@ -359,18 +373,29 @@ func (s *Server) openTCPSockets() error {
 		return err
 	}()
 
+	for {
+		reloadSimulationPacket := &serializable.Packet{OpCode: serializable.Packet_ReloadSimulation}
+		data, err := proto.Marshal(reloadSimulationPacket)
+		if err != nil {
+			fmt.Printf("%v\n", err)
+			return err
+		}
+		s.tcpSimSocket.Write(data)
+		time.Sleep(time.Second * 5)
+	}
+
 	if err != nil {
 		return err
 	}
 
 	// connect the clients
 	err = func() error {
-		attempts := 10
+		attempts := 2
 		for {
 			s.tcpClientSocket, err = net.DialTCP(tcpNetwork, s.tcpLocalClientAddress, s.tcpRemoteClientAddress)
 			attempts--
 			if err == nil {
-				fmt.Println(attempts)
+				fmt.Println("client connected")
 				return nil
 			}
 			if attempts < 1 {
