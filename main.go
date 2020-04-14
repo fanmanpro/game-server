@@ -9,9 +9,6 @@ import (
 func main() {
 	gameServer := server.NewServer()
 
-	for {
-		err := gameServer.Start()
-		fmt.Println(err)
-		defer gameServer.Stop(err)
-	}
+	err := gameServer.Start()
+	fmt.Println(err)
 }
