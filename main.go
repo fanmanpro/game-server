@@ -10,5 +10,7 @@ func main() {
 	gameServer := server.NewServer()
 
 	err := gameServer.Start()
-	fmt.Println(err)
+	if err != nil {
+		fmt.Println(err)
+	}
 }

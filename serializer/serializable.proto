@@ -25,6 +25,10 @@ message SeatConfiguration {
     repeated Seat seats = 1;
 }
 
+message RunSimulation {
+    int32 tick = 1;
+}
+
 
 message Context3D {
     int32 tick = 1;
