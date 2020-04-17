@@ -66,12 +66,13 @@ var end time.Time
 func connectSimulationTCP() error {
 	var err error
 
-	simulationTCPAddressHost, err = net.ResolveTCPAddr(tcpNetwork, fmt.Sprintf("%v:%v", localhostAddress, "9999"))
+	simulationTCPAddressHost, err = net.ResolveTCPAddr(tcpNetwork, fmt.Sprintf(":%v", "9999"))
+	// simulationTCPAddressHost, err = net.ResolveTCPAddr(tcpNetwork, fmt.Sprintf("%v:%v", localhostAddress, "9999"))
 	if err != nil {
 		return err
 	}
 
-	simulationTCPAddressRemote, err = net.ResolveTCPAddr(tcpNetwork, fmt.Sprintf("%v:%v", localhostAddress, "1999"))
+	simulationTCPAddressRemote, err = net.ResolveTCPAddr(tcpNetwork, fmt.Sprintf(":%v", "1999"))
 	if err != nil {
 		return err
 	}
@@ -91,7 +92,7 @@ func connectSimulationTCP() error {
 func connectClientsTCPAsync() {
 	var err error
 
-	clientTCPAddressHost, err = net.ResolveTCPAddr(tcpNetwork, fmt.Sprintf("%v:%v", localhostAddress, "9889"))
+	clientTCPAddressHost, err = net.ResolveTCPAddr(tcpNetwork, fmt.Sprintf(":%v", "9889"))
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -296,7 +297,7 @@ func connectClientUDP(clientTCPConnection *net.TCPConn) error {
 func connectClientsUDP() error {
 	var err error
 
-	clientUDPAddressHost, err = net.ResolveUDPAddr(udpNetwork, fmt.Sprintf("%v:%v", localhostAddress, "9888")) // this should be a client address, not localhost
+	clientUDPAddressHost, err = net.ResolveUDPAddr(udpNetwork, fmt.Sprintf(":%v", "9888")) // this should be a client address, not localhost
 	if err != nil {
 		return err
 	}
@@ -316,12 +317,12 @@ func connectClientsUDP() error {
 }
 
 func connectSimulationUDP() error {
-	simulationUDPAddressHost, err := net.ResolveUDPAddr(udpNetwork, fmt.Sprintf("%v:%v", localhostAddress, "9998"))
+	simulationUDPAddressHost, err := net.ResolveUDPAddr(udpNetwork, fmt.Sprintf(":%v", "9998"))
 	if err != nil {
 		return err
 	}
 
-	simulationUDPAddressRemote, err := net.ResolveUDPAddr(udpNetwork, fmt.Sprintf("%v:%v", localhostAddress, "1998"))
+	simulationUDPAddressRemote, err := net.ResolveUDPAddr(udpNetwork, fmt.Sprintf(":%v", "1998"))
 	if err != nil {
 		return err
 	}
