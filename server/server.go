@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"strings"
 	"time"
@@ -17,29 +18,43 @@ const localhostAddress string = "127.0.0.1"
 const tcpNetwork string = "tcp4"
 const udpNetwork string = "udp4"
 
-type Server struct {
-}
+// type Server struct {
+// }
 
-func NewServer() *Server {
-	return &Server{}
-	// return &Server{rate: 50, tick: 1, stop: make(chan bool)} // 100 is 10 ticks per second, 50 is 20, 33 is 30, etc.
-}
+// func NewServer() *Server {
+// 	return &Server{}
+// 	// return &Server{rate: 50, tick: 1, stop: make(chan bool)} // 100 is 10 ticks per second, 50 is 20, 33 is 30, etc.
+// }
 
+var simulationDisconnected bool
 var simulationTCPConnection *net.TCPConn
 var simulationTCPAddressHost *net.TCPAddr
 var simulationTCPAddressRemote *net.TCPAddr
-
-var clientTCPConnections []*net.TCPConn
-var clientTCPAddressHost *net.TCPAddr
-
 var simulationUDPConnection *net.UDPConn
 var simulationUDPAddressHost *net.UDPAddr
 var simulationUDPAddressRemote *net.UDPAddr
 
-var clientUDPConnections []*net.UDPConn
+var clientTCPConnections map[MAC]*net.TCPConn
+var clientTCPAddressHost *net.TCPAddr
+var clientUDPConnections map[*net.TCPConn]*net.UDPConn
 var clientUDPAddressHost *net.UDPAddr
 
-var seats map[string]*net.TCPConn
+// GUID is an identifier for a netsync object
+type GUID = string
+
+// MAC is an unique network adapter identifier
+type MAC = string
+
+var seats map[GUID]*MAC
+
+// var connectionsTCP map[MAC]*net.TCPConn
+// var connectionsUDP map[MAC]*net.TCPConn
+
+// var connections map[MAC]*net.TCPConn
+
+var macCh chan MAC
+
+// var connectionCh chan *net.TCPConn
 
 const rate time.Duration = 50
 
@@ -82,42 +97,139 @@ func connectClientsTCPAsync() {
 		return
 	}
 
-	// clientTCPConnections = make([]*net.TCPConn, 0)
-
 	// this should happen per client
-	listener, err := net.ListenTCP("tcp", clientTCPAddressHost)
+
+	// split the listening and the seating
+	// because we need to always listen and only push into a seating channel
+	// this will allow us to connect into a new seat, or reconnect into a disconnected seat through a ip & mac address combo
+
+	/*
+		running sim, reconnecting client journey
+		✓ tcp connect
+		✓ receive mac address
+		✓ A store { seatguid: mac } map
+		✓ B store { mac: tcpconn } map immediately after above
+		- client disconnects
+		- stop reading and write tcp + udp
+		- client reconnects
+		- client mac was found in B and client ip is compared with old tcpconn ip
+		- success: reconnect and seat at A. start reading and writing tcp + udp
+		- failed: look for open seats just like during connect
+
+		running clients, reconnecting sim journey
+		- tcp connect
+		- configure seats
+		- sim disconnects
+		- stop reading and writing tcp + udp
+		- sim reconnects
+		- check B map for existing mac + ip entries
+		- A store for each entry in B
+	*/
+	var clientTCPListener *net.TCPListener
+	clientTCPListener, err = net.ListenTCP("tcp", clientTCPAddressHost)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	listener.SetDeadline(time.Now().Add(1 * time.Second))
+	// clientTCPListener.SetDeadline(time.Now().Add(1 * time.Second))
 
-	seatCount := len(seats)
-	for i := 0; i < seatCount; i++ {
-		clientTCPConnection, err := listener.AcceptTCP()
+	for {
+		clientTCPConnection, err := clientTCPListener.AcceptTCP()
+		fmt.Println("client attempting to (re)connect")
 		if err != nil {
-			fmt.Println("only", i, "client(s) managed to connected: ", err)
-			seatsConn <- nil
+			fmt.Println(err)
+			// fmt.Println("only", i, "client(s) managed to connected: ", err)
+			// seatsConn <- nil
 			return
 		}
-		fmt.Println("client connected")
-		clientTCPConnections = append(clientTCPConnections, clientTCPConnection)
-		seatsConn <- clientTCPConnection
-		go receiveClientTCP(clientTCPConnection)
+		go receiveClientMacTCPAsync(clientTCPConnection)
 	}
-	return
+
+	// seatCount := len(seats)
+	// for i := 0; i < seatCount; i++ {
+	// 	fmt.Println("client connected")
+	// 	clientTCPConnections = append(clientTCPConnections, clientTCPConnection)
+	// 	seatsConn <- clientTCPConnection
+	// 	go receiveClientTCP(clientTCPConnection)
+	// }
+	// return
+}
+func receiveClientMacTCPAsync(clientTCPConnection *net.TCPConn) {
+	var err error
+	var l int
+
+	// wait for context
+	clientTCPConnection.SetReadDeadline(time.Now().Add(time.Second * 5))
+
+	buffer := make([]byte, 64*1024*1024)
+	l, err = clientTCPConnection.Read(buffer)
+	if err != nil {
+		if err == io.EOF {
+			fmt.Println("client disconnected while awaiting its MAC")
+		}
+		if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
+			fmt.Println("client timed out while awaiting its MAC")
+		}
+		return
+	}
+
+	// unmarshal context from client. validate then forward.
+	data := buffer[:l]
+	packet := &serializable.Packet{}
+	err = proto.Unmarshal(data, packet)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	if packet.OpCode == serializable.Packet_ClientMAC {
+		clientMac := &serializable.ClientMAC{}
+		err = ptypes.UnmarshalAny(packet.Data, clientMac)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		if oldClientTCPConnection, ok := clientTCPConnections[clientMac.MAC]; ok {
+			fmt.Println("client reconnecting with mac. checking address")
+			oldIP := strings.Split(oldClientTCPConnection.RemoteAddr().String(), ":")[0]
+			newIP := strings.Split(clientTCPConnection.RemoteAddr().String(), ":")[0]
+			// fmt.Println(oldClientTCPConnection.RemoteAddr().String(), clientTCPConnection.RemoteAddr().String())
+			if oldIP == newIP {
+				fmt.Println("client reconnect matched")
+				clientTCPConnections[clientMac.MAC] = clientTCPConnection
+				for guid, mac := range seats {
+					if *mac == clientMac.MAC {
+						sendClientSeat(clientTCPConnection, guid)
+					}
+				}
+				go receiveClientTCPAsync(clientTCPConnection)
+
+				err = connectClientUDP(clientTCPConnection)
+				if err != nil {
+					log.Println(err)
+				}
+				// successful reconnect
+				return
+			}
+		}
+
+		// not a reconnect so new client and new mac
+		clientTCPConnections[clientMac.MAC] = clientTCPConnection
+		macCh <- clientMac.MAC
+		go receiveClientTCPAsync(clientTCPConnection)
+	}
 }
 
-var seatsConn chan *net.TCPConn
-
+// this fillSeats isn't really dynamic, it needs to rather fill
+// them one at a time continuously as they become available to
+// allow of any kind of game server seat filling possibility like
+// BR (fill until full), MMORPG (always fill), War3 (fill on request)
 func fillSeats() error {
-	seatsConn = make(chan *net.TCPConn)
 	for guid := range seats {
-		tcpConnection := <-seatsConn
-		if tcpConnection != nil {
-			fmt.Printf("seating at %v for %v\n", guid, tcpConnection)
-			seats[guid] = tcpConnection
-		}
+		mac := <-macCh
+		fmt.Printf("seating at %v for %v\n", guid, mac)
+		seats[guid] = &mac
 	}
 	return nil
 }
@@ -144,15 +256,40 @@ func configureSeats() error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("server registered %v seats from simulation\n", len(seatConfiguration.Seats))
-		seats = make(map[string]*net.TCPConn)
+		seatCount := len(seatConfiguration.Seats)
+		fmt.Printf("server registered %v seats from simulation\n", seatCount)
+
+		// later on when server has a growing seat cat, remove the map caps below
+		seats = make(map[GUID]*MAC, seatCount)
+		clientTCPConnections = make(map[MAC]*net.TCPConn, seatCount)
+		clientUDPConnections = make(map[*net.TCPConn]*net.UDPConn, seatCount)
+		macCh = make(chan MAC)
 		for _, seat := range seatConfiguration.Seats {
-			fmt.Printf("seating reserved for %v\n", seat.GUID)
+			fmt.Printf("seating available at %v\n", seat.GUID)
 			seats[seat.GUID] = nil
 		}
 	} else {
 		return errors.New("invalid seat configuration packet opcode")
 	}
+	return nil
+}
+
+func connectClientUDP(clientTCPConnection *net.TCPConn) error {
+	var err error
+	var clientUDPAddressRemote *net.UDPAddr
+
+	clientUDPAddressRemote, err = net.ResolveUDPAddr(udpNetwork, fmt.Sprintf("%v:%v", strings.Split(clientTCPConnection.RemoteAddr().String(), ":")[0], "1888")) // this should be a client address, not localhost
+	if err != nil {
+		return err
+	}
+
+	clientUDPConnection, err := net.DialUDP(udpNetwork, clientUDPAddressHost, clientUDPAddressRemote)
+	if err != nil {
+		return err
+	}
+
+	clientUDPConnections[clientTCPConnection] = clientUDPConnection
+	go receiveClientUDP(clientUDPConnection)
 	return nil
 }
 
@@ -164,23 +301,15 @@ func connectClientsUDP() error {
 		return err
 	}
 
-	for _, tcpConnection := range seats {
-		if tcpConnection == nil {
+	for _, clientTCPConnection := range clientTCPConnections {
+		if clientTCPConnection == nil {
 			continue
 		}
-		var clientUDPAddressRemote *net.UDPAddr
-		clientUDPAddressRemote, err = net.ResolveUDPAddr(udpNetwork, fmt.Sprintf("%v:%v", strings.Split(tcpConnection.RemoteAddr().String(), ":")[0], "1888")) // this should be a client address, not localhost
+
+		err = connectClientUDP(clientTCPConnection)
 		if err != nil {
 			return err
 		}
-
-		clientUDPConnection, err := net.DialUDP(udpNetwork, clientUDPAddressHost, clientUDPAddressRemote)
-		if err != nil {
-			return err
-		}
-
-		clientUDPConnections = append(clientUDPConnections, clientUDPConnection)
-		go receiveClientUDP(clientUDPConnection)
 	}
 
 	return nil
@@ -293,39 +422,58 @@ func receiveSimulationUDPAsync() {
 	return
 }
 
+func sendClientSeat(clientTCPConnection *net.TCPConn, guid GUID) error {
+	ss := &serializable.Seat{
+		GUID: guid,
+	}
+	any, err := ptypes.MarshalAny(ss)
+	if err != nil {
+		return err
+	}
+
+	seatPacket :=
+		&serializable.Packet{
+			OpCode: serializable.Packet_Seat,
+			Data:   any,
+		}
+
+	data, err := proto.Marshal(seatPacket)
+	if err != nil {
+		return err
+	}
+
+	_, err = clientTCPConnection.Write(data)
+	if err != nil {
+		if err.(net.Error).Timeout() {
+			fmt.Printf("client disconnected 2\n")
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
 func broadcastSeats() error {
-	for g, c := range seats {
+	for m, c := range clientTCPConnections {
 		if c == nil {
 			fmt.Println("address was nil")
 			continue
 		}
+		var guid GUID
+		for g, mac := range seats {
+			if *mac == m {
+				guid = g
+			}
+		}
+		if guid == "" {
+			fmt.Println("connection had no seat associated")
+			continue
+		}
+
 		// fmt.Printf("%v seated at %v\n", a.Port, g)
 
-		ss := &serializable.Seat{
-			GUID: g,
-		}
-		any, err := ptypes.MarshalAny(ss)
+		err := sendClientSeat(c, guid)
 		if err != nil {
-			return err
-		}
-
-		seatPacket :=
-			&serializable.Packet{
-				OpCode: serializable.Packet_Seat,
-				Data:   any,
-			}
-
-		data, err := proto.Marshal(seatPacket)
-		if err != nil {
-			return err
-		}
-
-		_, err = c.Write(data)
-		if err != nil {
-			if err.(net.Error).Timeout() {
-				fmt.Printf("client disconnected 2\n")
-				return nil
-			}
 			return err
 		}
 		// break
@@ -391,25 +539,29 @@ func receiveClientUDP(clientUDPConnection *net.UDPConn) error {
 	}
 	return nil
 }
-func receiveClientTCP(clientTCPConnection *net.TCPConn) error {
+func receiveClientTCPAsync(clientTCPConnection *net.TCPConn) {
 	if clientTCPConnection == nil {
-		return errors.New("no TCP connection for client to receive with")
+		fmt.Println("no TCP connection for client to receive with")
 	} else {
 		fmt.Println("receiving TCP for client")
 	}
-	defer disconnectClient()
+	defer disconnectClient(clientTCPConnection)
+	clientTCPConnection.SetReadDeadline(time.Time{})
 	for {
 		// wait for context
 		buffer := make([]byte, 64*1024*1024)
 		_, err := clientTCPConnection.Read(buffer)
 		if err != nil {
 			if err == io.EOF {
-				return errors.New("client disconnected")
+				fmt.Println("client disconnected")
+				return
 			}
 			if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
-				return errors.New("client timed out")
+				fmt.Println("client timed out")
+				return
 			}
-			return err
+			fmt.Println(err)
+			return
 		}
 		// unmarshal context from client. validate then forward.
 		// data := buffer[:l]
@@ -433,7 +585,6 @@ func receiveSimulationTCPAsync() {
 			if err == io.EOF {
 				fmt.Println("simulation disconnected")
 				return
-				// reconnectSimulation()
 			}
 			if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
 				fmt.Println("simulation timed out")
@@ -452,19 +603,21 @@ func receiveSimulationTCPAsync() {
 	}
 }
 
-func disconnectClient() {
-	// clientTCPConnection.SetLinger(0)
-	// clientTCPConnection.SetNoDelay(false)
-	// clientTCPConnection.Close()
+func disconnectClient(clientTCPConnection *net.TCPConn) {
+	clientTCPConnection.SetLinger(0)
+	clientTCPConnection.SetKeepAlive(false)
+	clientTCPConnection.Close()
 
-	// clientUDPConnection.Close()
+	clientUDPConnections[clientTCPConnection].Close()
+	delete(clientUDPConnections, clientTCPConnection)
 
 	fmt.Println("client connections closed")
+	// fmt.Println(clientTCPConnection.RemoteAddr().String())
 
-	reconnectClient()
+	// start reconnect timer and dispose connections if timer runs out
+
+	// reconnectClient()
 }
-
-var simulationDisconnected bool
 
 func disconnectSimulation() error {
 	if simulationDisconnected {
@@ -530,18 +683,10 @@ func reconnectSimulation() error {
 func reconnectClient() {
 	fmt.Println("client reconnecting")
 
-	// connectClientsTCP()
-
-	// is it a reconnect or a restart? for now, its always a restart
-	// configureSeats()
-
-	// connectSimulationUDP()
-	// go receiveSimulationUDP()
-
-	// runSimulation()
+	// connectClientsTCPAsync()
 }
 
-func (s *Server) Start() error {
+func Start() error {
 	var err error
 	fmt.Println("starting game server")
 

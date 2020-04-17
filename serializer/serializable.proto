@@ -12,6 +12,7 @@ message Packet {
 
 				// connection related
 				ClientDisconnect = 100;
+				ClientMAC = 101;
 
 				// game server related
         SeatConfiguration = 200;
@@ -29,6 +30,9 @@ message RunSimulation {
     int32 tick = 1;
 }
 
+message ClientMAC {
+    string MAC = 1;
+}
 
 message Context3D {
     int32 tick = 1;

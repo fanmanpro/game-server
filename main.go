@@ -7,9 +7,7 @@ import (
 )
 
 func main() {
-	gameServer := server.NewServer()
-
-	err := gameServer.Start()
+	err := server.Start()
 	if err != nil {
 		fmt.Println(err)
 	}
