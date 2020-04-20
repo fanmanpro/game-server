@@ -66,6 +66,7 @@ var end time.Time
 func connectSimulationTCP() error {
 	var err error
 
+	// simulationTCPAddressHost, err = net.ResolveTCPAddr(tcpNetwork, fmt.Sprintf("35.183.5.196:%v", "9999"))
 	simulationTCPAddressHost, err = net.ResolveTCPAddr(tcpNetwork, fmt.Sprintf(":%v", "9999"))
 	// simulationTCPAddressHost, err = net.ResolveTCPAddr(tcpNetwork, fmt.Sprintf("%v:%v", localhostAddress, "9999"))
 	if err != nil {
@@ -77,8 +78,10 @@ func connectSimulationTCP() error {
 		return err
 	}
 
+	fmt.Printf("simulation connecting from %v to %v\n", simulationTCPAddressHost.String(), simulationTCPAddressRemote.String())
 	// connect the sim
 	for {
+		// simulationTCPConnection, err = net.ListenTCP("tcp4"u tcpNetwork) //, simulationTCPAddressHost, simulationTCPAddressRemote)
 		simulationTCPConnection, err = net.DialTCP(tcpNetwork, simulationTCPAddressHost, simulationTCPAddressRemote)
 		if err != nil {
 			fmt.Println("sim tcp", err)
