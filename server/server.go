@@ -53,7 +53,6 @@ var seats map[GUID]*MAC
 // var connections map[MAC]*net.TCPConn
 
 var macCh chan MAC
-var clientCh chan *net.TCPConn
 var simCh chan bool
 
 // var connectionCh chan *net.TCPConn
@@ -89,8 +88,14 @@ func listenAnyTCPAsync() {
 		}
 
 		// check if its the simulation or just any other client
+		fmt.Println(anyTCPConnection.RemoteAddr().String())
 		if anyTCPConnection.RemoteAddr().String() == "127.0.0.1:51999" {
 			simulationTCPConnection = anyTCPConnection
+			if simulationDisconnected {
+				// its a reconnect
+				reconnectSimulation()
+				return
+			}
 			fmt.Println("simulation connected")
 			// at the moment once a simulation connects all we need from it is to
 			// be connected, we might need more later once there are dynamic seating
@@ -190,11 +195,9 @@ func listenAnyTCPAsync() {
 // 	// }
 // 	// return
 // }
-func receiveClientMacTCPAsync() {
+func receiveClientMacTCPAsync(clientTCPConnection *net.TCPConn) {
 	var err error
 	var l int
-
-	clientTCPConnection := <-clientCh
 
 	// wait for context
 	clientTCPConnection.SetReadDeadline(time.Now().Add(time.Second * 5))
@@ -302,11 +305,7 @@ func configureSeats() error {
 		seatCount := len(seatConfiguration.Seats)
 		fmt.Printf("server registered %v seats from simulation\n", seatCount)
 
-		// later on when server has a growing seat cat, remove the map caps below
-		seats = make(map[GUID]*MAC, seatCount)
-		clientTCPConnections = make(map[MAC]*net.TCPConn, seatCount)
-		clientUDPConnections = make(map[*net.TCPConn]*net.UDPConn, seatCount)
-		macCh = make(chan MAC)
+		// later on when server has a growing seat cap, remove the map caps below
 		for _, seat := range seatConfiguration.Seats {
 			fmt.Printf("seating available at %v\n", seat.GUID)
 			seats[seat.GUID] = nil
@@ -691,7 +690,7 @@ func disconnectSimulation() error {
 func reconnectSimulation() error {
 	// var err error
 	fmt.Println("simulation reconnecting")
-	panic("its disabled!")
+	// panic("its disabled!")
 
 	// err = connectSimulationTCP()
 	// if err != nil {
@@ -735,8 +734,12 @@ func Start() error {
 	fmt.Println("starting game server")
 
 	restart := make(chan int)
-	clientCh = make(chan *net.TCPConn)
 	simCh = make(chan bool)
+	macCh = make(chan MAC)
+
+	seats = make(map[GUID]*MAC)
+	clientTCPConnections = make(map[MAC]*net.TCPConn)
+	clientUDPConnections = make(map[*net.TCPConn]*net.UDPConn)
 
 	// allow clients to connect based on seat configuration
 	go listenAnyTCPAsync()
