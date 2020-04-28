@@ -88,8 +88,8 @@ func listenAnyTCPAsync() {
 		}
 
 		// check if its the simulation or just any other client
-		fmt.Println(anyTCPConnection.RemoteAddr().String())
-		if anyTCPConnection.RemoteAddr().String() == "127.0.0.1:51999" {
+		// fmt.Println(anyTCPConnection.RemoteAddr().String())
+		if strings.Contains(anyTCPConnection.RemoteAddr().String(), ":51999") {
 			simulationTCPConnection = anyTCPConnection
 			if simulationDisconnected {
 				// its a reconnect
