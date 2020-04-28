@@ -57,7 +57,9 @@ var simCh chan bool
 
 // var connectionCh chan *net.TCPConn
 
-const rate time.Duration = 50
+const rate time.Duration = 200
+
+// const rate time.Duration = 50
 
 var tick int32 = 1
 
@@ -431,6 +433,7 @@ func receiveSimulationUDPAsync() {
 
 		// define the outgoing packet we want to send to the sim
 		tick++
+		fmt.Println("server ticked")
 
 		outgoing := &serializable.Context3D{
 			Tick: tick,
