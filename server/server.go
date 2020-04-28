@@ -508,7 +508,7 @@ func receiveClientTCPAsync(clientTCPConnection *net.TCPConn) {
 	for {
 		// wait for context
 		buffer := make([]byte, 64*1024*1024)
-		_, err := clientTCPConnection.Read(buffer)
+		l, err := clientTCPConnection.Read(buffer)
 		if err != nil {
 			if err == io.EOF {
 				fmt.Println("client disconnected")
@@ -521,6 +521,7 @@ func receiveClientTCPAsync(clientTCPConnection *net.TCPConn) {
 			fmt.Println(err)
 			return
 		}
+		fmt.Println("client read", l, "bytes")
 		// unmarshal context from client. validate then forward.
 		// data := buffer[:l]
 		// packet := &serializable.Packet{}
@@ -529,6 +530,7 @@ func receiveClientTCPAsync(clientTCPConnection *net.TCPConn) {
 		// 	log.Println(err)
 		// }
 	}
+	fmt.Println("stopped receiving TCP for client")
 }
 
 func receiveSimulationTCPAsync() {
