@@ -109,94 +109,6 @@ func listenAnyTCPAsync() {
 	}
 }
 
-// func connectSimulationTCP() error {
-// 	var err error
-
-// 	// simulationTCPAddressHost, err = net.ResolveTCPAddr(tcpNetwork, fmt.Sprintf("35.183.5.196:%v", "9999"))
-// 	simulationTCPAddressHost, err = net.ResolveTCPAddr(tcpNetwork, fmt.Sprintf(":%v", "59999"))
-// 	// simulationTCPAddressHost, err = net.ResolveTCPAddr(tcpNetwork, fmt.Sprintf("%v:%v", localhostAddress, "9999"))
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	simulationTCPAddressRemote, err = net.ResolveTCPAddr(tcpNetwork, fmt.Sprintf(":%v", "51999"))
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	fmt.Printf("simulation connecting from %v to %v\n", simulationTCPAddressHost.String(), simulationTCPAddressRemote.String())
-// 	// connect the sim
-// 	for {
-// 		simulationTCPConnection, err = net.DialTCP(tcpNetwork, simulationTCPAddressHost, simulationTCPAddressRemote)
-// 		if err != nil {
-// 			fmt.Println("sim tcp", err)
-// 		} else {
-// 			return nil
-// 		}
-// 		time.Sleep(time.Second)
-// 	}
-// }
-
-// func connectClientsTCPAsync() {
-// 	var err error
-
-// 	// this should happen per client
-
-// 	// split the listening and the seating
-// 	// because we need to always listen and only push into a seating channel
-// 	// this will allow us to connect into a new seat, or reconnect into a disconnected seat through a ip & mac address combo
-
-// 	/*
-// 		running sim, reconnecting client journey
-// 		✓ tcp connect
-// 		✓ receive mac address
-// 		✓ A store { seatguid: mac } map
-// 		✓ B store { mac: tcpconn } map immediately after above
-// 		- client disconnects
-// 		- stop reading and write tcp + udp
-// 		- client reconnects
-// 		- client mac was found in B and client ip is compared with old tcpconn ip
-// 		- success: reconnect and seat at A. start reading and writing tcp + udp
-// 		- failed: look for open seats just like during connect
-
-// 		running clients, reconnecting sim journey
-// 		- tcp connect
-// 		- configure seats
-// 		- sim disconnects
-// 		- stop reading and writing tcp + udp
-// 		- sim reconnects
-// 		- check B map for existing mac + ip entries
-// 		- A store for each entry in B
-// 	*/
-// 	// var clientTCPListener *net.TCPListener
-// 	// clientTCPListener, err = net.ListenTCP("tcp", clientTCPAddressHost)
-// 	// if err != nil {
-// 	// 	fmt.Println(err)
-// 	// 	return
-// 	// }
-// 	// clientTCPListener.SetDeadline(time.Now().Add(1 * time.Second))
-
-// 	for {
-// 		clientTCPConnection, err := clientTCPListener.AcceptTCP()
-// 		fmt.Println("client attempting to (re)connect")
-// 		if err != nil {
-// 			fmt.Println(err)
-// 			// fmt.Println("only", i, "client(s) managed to connected: ", err)
-// 			// seatsConn <- nil
-// 			return
-// 		}
-// 		go receiveClientMacTCPAsync(clientTCPConnection)
-// 	}
-
-// 	// seatCount := len(seats)
-// 	// for i := 0; i < seatCount; i++ {
-// 	// 	fmt.Println("client connected")
-// 	// 	clientTCPConnections = append(clientTCPConnections, clientTCPConnection)
-// 	// 	seatsConn <- clientTCPConnection
-// 	// 	go receiveClientTCP(clientTCPConnection)
-// 	// }
-// 	// return
-// }
 func receiveClientMacTCPAsync(clientTCPConnection *net.TCPConn) {
 	var err error
 	var l int
@@ -403,7 +315,7 @@ func receiveSimulationUDPAsync() {
 				return
 			}
 			// its ok if its a timeout
-			// fmt.Printf("sim read timout")
+			fmt.Println("sim read timout")
 			continue
 		}
 		// fmt.Printf("sim read")
@@ -464,6 +376,7 @@ func receiveSimulationUDPAsync() {
 			// fmt.Println("wrote to sim")
 		}
 	}
+	fmt.Println("stopped receiving UDP for simulation")
 	return
 }
 
@@ -796,6 +709,7 @@ func Start() error {
 		return err
 	}
 
+	fmt.Println("everything should be running smoothly")
 	<-restart
 
 	fmt.Println("Server ended")
