@@ -256,7 +256,7 @@ func connectClientUDP() error {
 func connectClientsUDP() error {
 	var err error
 
-	clientUDPAddressHost, err = net.ResolveUDPAddr(udpNetwork, fmt.Sprintf("%v:%v", "15.223.54.204", "59888"))
+	clientUDPAddressHost, err = net.ResolveUDPAddr(udpNetwork, fmt.Sprintf("%v:%v", "0.0.0.0", "59888"))
 	if err != nil {
 		return err
 	}
