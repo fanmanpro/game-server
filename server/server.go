@@ -36,7 +36,9 @@ var simulationUDPAddressHost *net.UDPAddr
 var simulationUDPAddressRemote *net.UDPAddr
 
 var clientTCPConnections map[MAC]*net.TCPConn
-var clientUDPConnections map[*net.TCPConn]*net.UDPConn
+
+var clientUDPAddresses map[*net.TCPConn]*net.UDPAddr
+var clientUDPConnection *net.UDPConn
 var clientUDPAddressHost *net.UDPAddr
 
 // GUID is an identifier for a netsync object
@@ -160,10 +162,10 @@ func receiveClientMacTCPAsync(clientTCPConnection *net.TCPConn) {
 				}
 				go receiveClientTCPAsync(clientTCPConnection)
 
-				err = connectClientUDP(clientTCPConnection)
-				if err != nil {
-					log.Println(err)
-				}
+				// err = connectClientUDP(clientTCPConnection)
+				// if err != nil {
+				// 	log.Println(err)
+				// }
 				// successful reconnect
 				return
 			}
@@ -230,23 +232,23 @@ func configureSeats() error {
 	return nil
 }
 
-func connectClientUDP(clientTCPConnection *net.TCPConn) error {
+func connectClientUDP() error {
 	var err error
-	var clientUDPAddressRemote *net.UDPAddr
+	// var clientUDPAddressRemote *net.UDPAddr
 
-	clientUDPAddressRemote, err = net.ResolveUDPAddr(udpNetwork, fmt.Sprintf("%v:%v", strings.Split(clientTCPConnection.RemoteAddr().String(), ":")[0], "51888")) // this should be a client address, not localhost
+	// clientUDPAddressRemote, err = net.ResolveUDPAddr(udpNetwork, fmt.Sprintf("%v:%v", strings.Split(clientTCPConnection.RemoteAddr().String(), ":")[0], "51888")) // this should be a client address, not localhost
+	// if err != nil {
+	// 	return err
+	// }
+
+	clientUDPConnection, err = net.ListenUDP(udpNetwork, clientUDPAddressHost)
 	if err != nil {
 		return err
 	}
 
-	clientUDPConnection, err := net.DialUDP(udpNetwork, clientUDPAddressHost, clientUDPAddressRemote)
-	if err != nil {
-		return err
-	}
+	// clientUDPConnection.Write([]byte{2, 1})
 
-	clientUDPConnection.Write([]byte{2, 1})
-
-	clientUDPConnections[clientTCPConnection] = clientUDPConnection
+	// clientUDPConnection = clientUDPConnection
 	go receiveClientUDP(clientUDPConnection)
 	return nil
 }
@@ -254,7 +256,7 @@ func connectClientUDP(clientTCPConnection *net.TCPConn) error {
 func connectClientsUDP() error {
 	var err error
 
-	clientUDPAddressHost, err = net.ResolveUDPAddr(udpNetwork, fmt.Sprintf(":%v", "59888")) // this should be a client address, not localhost
+	clientUDPAddressHost, err = net.ResolveUDPAddr(udpNetwork, fmt.Sprintf("%v:%v", localhostAddress, "59888"))
 	if err != nil {
 		return err
 	}
@@ -264,10 +266,21 @@ func connectClientsUDP() error {
 			continue
 		}
 
-		err = connectClientUDP(clientTCPConnection)
-		if err != nil {
-			return err
-		}
+		addrSplit := strings.Split(clientTCPConnection.RemoteAddr().String(), ":")
+		ipStr := addrSplit[0]
+		// portStr := addrSplit[1]
+		// portInt, err := strconv.Atoi(portStr)
+		// if err != nil {
+		// 	return err
+		// }
+		addr := &net.UDPAddr{IP: net.ParseIP(ipStr), Port: 51888}
+		fmt.Printf("client registered %+v\n", addr)
+		clientUDPAddresses[clientTCPConnection] = addr
+	}
+
+	err = connectClientUDP()
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -335,11 +348,16 @@ func receiveSimulationUDPAsync() {
 			fmt.Printf("context was dropped: %v vs %v (old)\n", incoming.Tick, tick)
 			continue
 			//return
-		} else {
-			for _, c := range clientUDPConnections {
-				_, err := c.Write(buffer[0:l])
+		} else if clientUDPConnection != nil {
+			for _, a := range clientUDPAddresses {
+				fmt.Printf("Daisy: %+v\n", a)
+				i, err := clientUDPConnection.WriteToUDP(buffer[0:l], a)
 				if err != nil {
-					fmt.Printf("%v\n", err)
+					fmt.Printf("Apple: %v\n", err)
+					continue
+				}
+				if i <= 0 {
+					fmt.Printf("Yard: %v\n", l)
 					continue
 				}
 			}
@@ -470,9 +488,21 @@ func receiveClientUDP(clientUDPConnection *net.UDPConn) error {
 	for {
 		// wait for context
 		buffer := make([]byte, 64*1024*1024)
-		l, _, err := clientUDPConnection.ReadFromUDP(buffer)
+		l, addr, err := clientUDPConnection.ReadFromUDP(buffer)
 		if err != nil {
 			return err
+		}
+
+		found := false
+		for _, a := range clientUDPAddresses {
+			if a.IP.Equal(addr.IP) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			fmt.Println("wtf a stranger")
+			continue
 		}
 
 		// unmarshal context from client. validate then forward.
@@ -571,8 +601,9 @@ func disconnectClient(clientTCPConnection *net.TCPConn) {
 	clientTCPConnection.SetKeepAlive(false)
 	clientTCPConnection.Close()
 
-	clientUDPConnections[clientTCPConnection].Close()
-	delete(clientUDPConnections, clientTCPConnection)
+	// clientUDPConnection.Close()
+	// clientUDPConnection = nil
+	delete(clientUDPAddresses, clientTCPConnection)
 
 	fmt.Println("client connections closed")
 	// fmt.Println(clientTCPConnection.RemoteAddr().String())
@@ -660,7 +691,7 @@ func Start() error {
 
 	seats = make(map[GUID]*MAC)
 	clientTCPConnections = make(map[MAC]*net.TCPConn)
-	clientUDPConnections = make(map[*net.TCPConn]*net.UDPConn)
+	clientUDPAddresses = make(map[*net.TCPConn]*net.UDPAddr)
 
 	// allow clients to connect based on seat configuration
 	go listenAnyTCPAsync()
