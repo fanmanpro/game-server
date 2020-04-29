@@ -244,6 +244,8 @@ func connectClientUDP(clientTCPConnection *net.TCPConn) error {
 		return err
 	}
 
+	clientUDPConnection.Write([]byte{2, 1})
+
 	clientUDPConnections[clientTCPConnection] = clientUDPConnection
 	go receiveClientUDP(clientUDPConnection)
 	return nil
@@ -521,6 +523,7 @@ func receiveClientTCPAsync(clientTCPConnection *net.TCPConn) {
 			fmt.Println(err)
 			return
 		}
+		//make a sim build that logs when context is sent and also when clients send and receive contexts. do this to determine where the packets are lost
 		fmt.Println("client read", l, "bytes")
 		// unmarshal context from client. validate then forward.
 		// data := buffer[:l]
