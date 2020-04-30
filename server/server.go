@@ -350,7 +350,7 @@ func receiveSimulationUDPAsync() {
 			//return
 		} else if clientUDPConnection != nil {
 			for _, a := range clientUDPAddresses {
-				fmt.Printf("Daisy: %+v\n", a)
+				fmt.Printf("Daisy: %v\n", len(buffer[0:l]))
 				i, err := clientUDPConnection.WriteToUDP(buffer[0:l], a)
 				if err != nil {
 					fmt.Printf("Apple: %v\n", err)
