@@ -59,9 +59,9 @@ var simCh chan bool
 
 // var connectionCh chan *net.TCPConn
 
-const rate time.Duration = 200
+// const rate time.Duration = 200
 
-// const rate time.Duration = 50
+const rate time.Duration = 50
 
 var tick int32 = 1
 
@@ -256,7 +256,7 @@ func connectClientUDP() error {
 func connectClientsUDP() error {
 	var err error
 
-	clientUDPAddressHost, err = net.ResolveUDPAddr(udpNetwork, fmt.Sprintf("%v:%v", "0.0.0.0", "59888"))
+	clientUDPAddressHost, err = net.ResolveUDPAddr(udpNetwork, fmt.Sprintf("%v:%v", "", "59888"))
 	if err != nil {
 		return err
 	}
@@ -330,7 +330,7 @@ func receiveSimulationUDPAsync() {
 				return
 			}
 			// its ok if its a timeout
-			fmt.Println("sim read timout")
+			fmt.Println("sim read timout", simulationUDPConnection.LocalAddr().String())
 			continue
 		}
 		// fmt.Printf("sim read")
