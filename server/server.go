@@ -60,6 +60,7 @@ var simCh chan bool
 // var connectionCh chan *net.TCPConn
 
 const rate time.Duration = 500
+
 //const rate time.Duration = 50
 
 var tick int32 = 1
@@ -736,10 +737,10 @@ func Start() error {
 	// allow simulation to send tcp packets and use to check for connection state
 	go receiveSimulationTCPAsync()
 
-	// err = connectSimulationUDP()
-	// if err != nil {
-	// 	return err
-	// }
+	err = connectSimulationUDP()
+	if err != nil {
+		return err
+	}
 	err = connectClientsUDP()
 	if err != nil {
 		return err
