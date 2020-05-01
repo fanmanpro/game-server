@@ -59,9 +59,9 @@ var simCh chan bool
 
 // var connectionCh chan *net.TCPConn
 
-// const rate time.Duration = 200
+const rate time.Duration = 500
 
-const rate time.Duration = 50
+//const rate time.Duration = 50
 
 var tick int32 = 1
 
