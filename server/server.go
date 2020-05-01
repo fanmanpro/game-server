@@ -311,8 +311,8 @@ func connectSimulationUDP() error {
 func receiveSimulationUDPAsync() {
 	defer disconnectSimulation()
 	fmt.Println("receiving UDP for simulation")
-	simulationUDPConnection.SetReadBuffer(64 * 1024 * 1024)
-	simulationUDPConnection.SetWriteBuffer(64 * 1024 * 1024)
+	// simulationUDPConnection.SetReadBuffer(64 * 1024 * 1024)
+	// simulationUDPConnection.SetWriteBuffer(64 * 1024 * 1024)
 	for simulationUDPConnection != nil {
 		end = time.Now().Add(rate * time.Millisecond)
 
@@ -486,15 +486,17 @@ func receiveClientUDP(clientUDPConnection *net.UDPConn) error {
 	if clientUDPConnection == nil {
 		return errors.New("no UDP connection for client to receive with")
 	}
-	fmt.Println("receiving UDP for client")
 	clientUDPConnection.SetReadBuffer(64 * 1024 * 1024)
 	clientUDPConnection.SetWriteBuffer(64 * 1024 * 1024)
-	for {
+	for clientUDPConnection != nil {
 		// wait for context
 		buffer := make([]byte, 64*1024*1024)
+		fmt.Println("receiving UDP for client")
 		l, addr, err := clientUDPConnection.ReadFromUDP(buffer)
+		fmt.Println("received UDP for client")
 		if err != nil {
-			return err
+			fmt.Println(err)
+			break
 		}
 
 		found := false
@@ -514,14 +516,16 @@ func receiveClientUDP(clientUDPConnection *net.UDPConn) error {
 		context := &serializable.Context3D{}
 		err = proto.Unmarshal(data, context)
 		if err != nil {
-			return err
+			fmt.Println(err)
+			continue
 		}
 
 		context.Client = true
 
 		outgoing, err := proto.Marshal(context)
 		if err != nil {
-			return err
+			fmt.Println(err)
+			continue
 		}
 
 		// refactor this with channels and pausing this read loop
@@ -531,6 +535,7 @@ func receiveClientUDP(clientUDPConnection *net.UDPConn) error {
 			fmt.Println("simulation udp connection is nil")
 		}
 	}
+	fmt.Println("stopped receiving UDP for client")
 	return nil
 }
 func receiveClientTCPAsync(clientTCPConnection *net.TCPConn) {
@@ -574,7 +579,7 @@ func receiveSimulationTCPAsync() {
 	fmt.Println("receiving TCP for simulation")
 
 	defer disconnectSimulation()
-	for {
+	for simulationTCPConnection != nil {
 		// wait for context
 		buffer := make([]byte, 64*1024*1024)
 		_, err := simulationTCPConnection.Read(buffer)
@@ -697,13 +702,6 @@ func Start() error {
 	clientTCPConnections = make(map[MAC]*net.TCPConn)
 	clientUDPAddresses = make(map[*net.TCPConn]*net.UDPAddr)
 
-	never := make(chan bool)
-	err = connectClientsUDP()
-	if err != nil {
-		return err
-	}
-	<-never
-
 	// allow clients to connect based on seat configuration
 	go listenAnyTCPAsync()
 
@@ -739,10 +737,10 @@ func Start() error {
 	// allow simulation to send tcp packets and use to check for connection state
 	go receiveSimulationTCPAsync()
 
-	err = connectSimulationUDP()
-	if err != nil {
-		return err
-	}
+	// err = connectSimulationUDP()
+	// if err != nil {
+	// 	return err
+	// }
 	err = connectClientsUDP()
 	if err != nil {
 		return err
