@@ -60,7 +60,6 @@ var simCh chan bool
 // var connectionCh chan *net.TCPConn
 
 const rate time.Duration = 500
-
 //const rate time.Duration = 50
 
 var tick int32 = 1
@@ -311,6 +310,8 @@ func connectSimulationUDP() error {
 func receiveSimulationUDPAsync() {
 	defer disconnectSimulation()
 	fmt.Println("receiving UDP for simulation")
+	simulationUDPConnection.SetReadBuffer(64 * 1024 * 1024)
+	simulationUDPConnection.SetWriteBuffer(64 * 1024 * 1024)
 	for simulationUDPConnection != nil {
 		end = time.Now().Add(rate * time.Millisecond)
 
@@ -485,6 +486,8 @@ func receiveClientUDP(clientUDPConnection *net.UDPConn) error {
 		return errors.New("no UDP connection for client to receive with")
 	}
 	fmt.Println("receiving UDP for client")
+	clientUDPConnection.SetReadBuffer(64 * 1024 * 1024)
+	clientUDPConnection.SetWriteBuffer(64 * 1024 * 1024)
 	for {
 		// wait for context
 		buffer := make([]byte, 64*1024*1024)
@@ -692,6 +695,13 @@ func Start() error {
 	seats = make(map[GUID]*MAC)
 	clientTCPConnections = make(map[MAC]*net.TCPConn)
 	clientUDPAddresses = make(map[*net.TCPConn]*net.UDPAddr)
+
+	never := make(chan bool)
+	err = connectClientsUDP()
+	if err != nil {
+		return err
+	}
+	<-never
 
 	// allow clients to connect based on seat configuration
 	go listenAnyTCPAsync()

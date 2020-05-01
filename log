@@ -1,0 +1,203 @@
+starting game server
+any attempting to (re)connect
+127.0.0.1:51999
+simulation connected
+configuring seats
+server registered 1 seats from simulation
+seating available at e21774d0-554b-404c-a858-bfb827b0320a
+seats configured
+any attempting to (re)connect
+72.141.248.13:60154
+receiving TCP for client
+seating at e21774d0-554b-404c-a858-bfb827b0320a for 107B44951621
+clients connected
+connected UDP for simulation
+client registered 72.141.248.13:51888
+sending run simulation packet
+receiving UDP for simulation
+receiving TCP for simulation
+receiving UDP for client
+everything should be running smoothly
+Daisy: 3061
+server ticked
+Daisy: 3061
+server ticked
+Daisy: 3061
+server ticked
+Daisy: 3061
+server ticked
+Daisy: 3061
+server ticked
+Daisy: 3061
+server ticked
+Daisy: 3061
+server ticked
+Daisy: 3061
+server ticked
+Daisy: 3061
+server ticked
+Daisy: 3061
+server ticked
+Daisy: 3061
+server ticked
+Daisy: 3061
+server ticked
+Daisy: 3061
+server ticked
+Daisy: 3061
+server ticked
+Daisy: 3061
+server ticked
+Daisy: 3061
+server ticked
+Daisy: 3061
+server ticked
+Daisy: 3061
+server ticked
+Daisy: 3061
+server ticked
+Daisy: 3061
+server ticked
+Daisy: 3061
+server ticked
+Daisy: 3061
+server ticked
+Daisy: 3061
+server ticked
+Daisy: 3061
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+sim read timout
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+Daisy: 2896
+server ticked
+simulation disconnected
+simulation connections closed
+simulation reconnecting
+stopped receiving UDP for simulation
