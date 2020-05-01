@@ -59,9 +59,9 @@ var simCh chan bool
 
 // var connectionCh chan *net.TCPConn
 
-// const rate time.Duration = 200
+const rate time.Duration = 500
 
-const rate time.Duration = 50
+// const rate time.Duration = 50
 
 var tick int32 = 1
 
@@ -696,6 +696,13 @@ func Start() error {
 	seats = make(map[GUID]*MAC)
 	clientTCPConnections = make(map[MAC]*net.TCPConn)
 	clientUDPAddresses = make(map[*net.TCPConn]*net.UDPAddr)
+
+	never := make(chan bool)
+	err = connectClientsUDP()
+	if err != nil {
+		return err
+	}
+	<-never
 
 	// allow clients to connect based on seat configuration
 	go listenAnyTCPAsync()
