@@ -256,7 +256,7 @@ func connectClientUDP() error {
 func connectClientsUDP() error {
 	var err error
 
-	clientUDPAddressHost, err = net.ResolveUDPAddr(udpNetwork, fmt.Sprintf("%v:%v", "", "59888"))
+	clientUDPAddressHost, err = net.ResolveUDPAddr(udpNetwork, fmt.Sprintf(":%v", "59888"))
 	if err != nil {
 		return err
 	}
@@ -352,8 +352,8 @@ func receiveSimulationUDPAsync() {
 			//return
 		} else if clientUDPConnection != nil {
 			for _, a := range clientUDPAddresses {
-				fmt.Printf("Daisy: %v\n", len(buffer[0:l]))
-				i, err := clientUDPConnection.WriteToUDP(buffer[0:l], a)
+				fmt.Printf("Daisy hello?: %+v\n", a)
+				i, err := clientUDPConnection.WriteTo(buffer[0:l], a)
 				if err != nil {
 					fmt.Printf("Apple: %v\n", err)
 					continue
