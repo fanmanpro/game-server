@@ -23,7 +23,7 @@ const udpNetwork string = "udp4"
 
 // func NewServer() *Server {
 // 	return &Server{}
-// 	// return &Server{rate: 50, tick: 1, stop: make(chan bool)} // 100 is 10 ticks per second, 50 is 20, 33 is 30, etc.
+// 	// return &Server{rate: 50, tick: 1, stop: make(chan bool)}
 // }
 var anyTCPAddressHost *net.TCPAddr
 
@@ -59,9 +59,9 @@ var simCh chan bool
 
 // var connectionCh chan *net.TCPConn
 
-const rate time.Duration = 500
+const rate time.Duration = 100 // 100 is 10 ticks per second, 50 is 20, 33 is 30, etc.
 
-//const rate time.Duration = 50
+// const rate time.Duration = 25
 
 var tick int32 = 1
 
@@ -352,14 +352,14 @@ func receiveSimulationUDPAsync() {
 			//return
 		} else if clientUDPConnection != nil {
 			for _, a := range clientUDPAddresses {
-				fmt.Printf("Daisy hello?: %+v\n", a)
+				// fmt.Printf("Daisy hello?: %+v\n", a)
 				i, err := clientUDPConnection.WriteTo(buffer[0:l], a)
 				if err != nil {
-					fmt.Printf("Apple: %v\n", err)
+					// fmt.Printf("Apple: %v\n", err)
 					continue
 				}
 				if i <= 0 {
-					fmt.Printf("Yard: %v\n", l)
+					// fmt.Printf("Yard: %v\n", l)
 					continue
 				}
 			}
@@ -491,9 +491,9 @@ func receiveClientUDP(clientUDPConnection *net.UDPConn) error {
 	for clientUDPConnection != nil {
 		// wait for context
 		buffer := make([]byte, 64*1024*1024)
-		fmt.Println("receiving UDP for client")
+		// fmt.Println("receiving UDP for client")
 		l, addr, err := clientUDPConnection.ReadFromUDP(buffer)
-		fmt.Println("received UDP for client")
+		// fmt.Println("received UDP for client")
 		if err != nil {
 			fmt.Println(err)
 			break
